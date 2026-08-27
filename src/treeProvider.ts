@@ -126,6 +126,14 @@ export class SimpleSignalTreeDataProvider implements vscode.TreeDataProvider<Tre
       );
       openDashboardAction.command = { command: 'simplesignal.openDashboard', title: 'Open Dashboard' };
 
+      const runBenchmarkAction = new TreeItemNode(
+        'Run Model Speed Benchmark',
+        vscode.TreeItemCollapsibleState.None,
+        'action',
+        new vscode.ThemeIcon('zap', new vscode.ThemeColor('charts.yellow'))
+      );
+      runBenchmarkAction.command = { command: 'simplesignal.runBenchmark', title: 'Run Benchmark' };
+
       const testAction = new TreeItemNode(
         'Test Signal Connections',
         vscode.TreeItemCollapsibleState.None,
@@ -182,6 +190,7 @@ export class SimpleSignalTreeDataProvider implements vscode.TreeDataProvider<Tre
         autoFetchAction,
         addAction,
         openDashboardAction,
+        runBenchmarkAction,
         testAction,
         openJsonAction,
         checkVramAction,

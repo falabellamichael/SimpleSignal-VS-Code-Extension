@@ -47,9 +47,20 @@ Instead of switching between separate sidebar webviews (like Continue or Cline),
 - Native streaming support for reasoning models (`DeepSeek R1/V4`, `Qwen Thinking`, `o1/o3-mini`).
 - Renders thinking thoughts in distinct blocks before the final code response.
 
-### 4. 🎨 Minimal Dark Neon Theme Integration
+### 4. ⚡ Benchmark Arena & Speed Testing
+- Interactive live speed benchmarking with streaming output.
+- Measures **Time-to-First-Token (TTFT)** in ms and **Tokens-Per-Second (TPS)** generation throughput.
+- Built-in test presets: Quick Speed Run (64 tokens), Luau & Code Synthesis (200 tokens), and Deep Reasoning Stress Test (350 tokens).
+- Dynamic **Leaderboard & Comparison Bar Charts** ranking model speeds.
+
+### 5. 📊 Live Hardware & Memory Telemetry
+- Real-time **GPU Dedicated VRAM** monitoring (AMD Radeon, NVIDIA, Intel).
+- Real-time **System RAM** usage and top memory consumer breakdown.
+- **Stray / Background AI Model Detection** (`llama-server`, `python`, `ollama`, `lmstudio`, `vllm`) with 1-click memory unloading.
+
+### 6. 🎨 Minimal Dark Neon Theme Integration
 - Dynamically inherits your active VS Code theme tokens (`--vscode-focusBorder`, `--vscode-editor-background`).
-- Includes a dedicated **Activity Bar Sidebar Hub** (`$(sparkle)`) and an interactive **Visual Hub Dashboard** with live search and connectivity testing.
+- Includes a dedicated **Activity Bar Sidebar Hub** and an interactive **Visual Hub Dashboard** with tabbed navigation.
 
 ---
 

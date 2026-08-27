@@ -65,3 +65,38 @@ export interface LoadedAIModel {
   expiresAt?: string;
 }
 
+export interface BenchmarkPreset {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+  maxTokens: number;
+}
+
+export interface BenchmarkResult {
+  modelId: string;
+  endpointName: string;
+  protocol: string;
+  presetName: string;
+  prompt: string;
+  outputPreview: string;
+  tokensGenerated: number;
+  promptTokens?: number;
+  ttftMs: number;
+  generationDurationMs: number;
+  totalDurationMs: number;
+  tokensPerSec: number;
+  status: 'success' | 'error';
+  errorMessage?: string;
+  timestamp: number;
+}
+
+export interface TelemetrySnapshot {
+  timestamp: number;
+  ram: RAMDiagnostics;
+  vram: VRAMDiagnostics;
+  loadedModels: LoadedAIModel[];
+  recentBenchmarks: BenchmarkResult[];
+}
+
+

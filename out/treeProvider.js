@@ -103,6 +103,8 @@ class SimpleSignalTreeDataProvider {
             addAction.command = { command: 'simplesignal.manageEndpoints', title: 'Add Endpoint' };
             const openDashboardAction = new TreeItemNode('Open SimpleSignal Visual Hub', vscode.TreeItemCollapsibleState.None, 'action', new vscode.ThemeIcon('dashboard', new vscode.ThemeColor('charts.red')));
             openDashboardAction.command = { command: 'simplesignal.openDashboard', title: 'Open Dashboard' };
+            const runBenchmarkAction = new TreeItemNode('Run Model Speed Benchmark', vscode.TreeItemCollapsibleState.None, 'action', new vscode.ThemeIcon('zap', new vscode.ThemeColor('charts.yellow')));
+            runBenchmarkAction.command = { command: 'simplesignal.runBenchmark', title: 'Run Benchmark' };
             const testAction = new TreeItemNode('Test Signal Connections', vscode.TreeItemCollapsibleState.None, 'action', new vscode.ThemeIcon('pulse'));
             testAction.command = { command: 'simplesignal.testEndpoints', title: 'Test Connections' };
             const openJsonAction = new TreeItemNode('Edit settings.json', vscode.TreeItemCollapsibleState.None, 'action', new vscode.ThemeIcon('json'));
@@ -123,6 +125,7 @@ class SimpleSignalTreeDataProvider {
                 autoFetchAction,
                 addAction,
                 openDashboardAction,
+                runBenchmarkAction,
                 testAction,
                 openJsonAction,
                 checkVramAction,

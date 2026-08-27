@@ -4,6 +4,7 @@ import { ModelFetcher } from './modelFetcher';
 import { SimpleSignalTreeDataProvider } from './treeProvider';
 import { SimpleSignalDashboard } from './dashboard';
 import { SystemDiagnostics } from './systemDiagnostics';
+import { BenchmarkEngine } from './benchmarkEngine';
 import { EndpointConfig, ProcessMemoryInfo } from './types';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -310,7 +311,93 @@ export function activate(context: vscode.ExtensionContext) {
       }
     );
   });
-  context.subscriptions.push(checkLoadedModelsCmd);
+  // Benchmark command
+  const runBenchmarkCmd = vscode.commands.registerCommand('simplesignal.runBenchmark', async () => {
+    const config = vscode.workspace.getConfiguration('simplesignal');
+    const endpoints = config.get<EndpointConfig[]>('endpoints', []).filter((e) => e.enabled !== false);
+
+    const modelChoices: (vscode.QuickPickItem & { ep: EndpointConfig; modelId: string })[] = [];
+    for (const ep of endpoints) {
+      for (const m of ep.models || []) {
+        modelChoices.push({
+          label: `$(hubot) ${m.id}`,
+          description: `Endpoint: ${ep.name} (${ep.protocol || 'openai'})`,
+          ep,
+          modelId: m.id,
+        });
+      }
+    }
+
+    if (modelChoices.length === 0) {
+      vscode.window.showInformationMessage('SimpleSignal: No active models found. Run Auto-Fetch first!');
+      return;
+    }
+
+    const selected = await vscode.window.showQuickPick(modelChoices, {
+      title: 'SimpleSignal: Select Model to Benchmark',
+      placeHolder: 'Choose a model to test speed & latency',
+    });
+
+    if (!selected) return;
+
+    const presetChoices = BenchmarkEngine.PRESETS.map((p) => ({
+      label: p.name,
+      description: `${p.maxTokens} max tokens`,
+      detail: p.description,
+      presetId: p.id,
+    }));
+
+    const presetPick = await vscode.window.showQuickPick(presetChoices, {
+      title: `Benchmark Preset for ${selected.modelId}`,
+    });
+
+    if (!presetPick) return;
+
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `⚡ SimpleSignal: Benchmarking ${selected.modelId}...`,
+        cancellable: false,
+      },
+      async (progress) => {
+        try {
+          outputChannel.show(true);
+          outputChannel.appendLine(`\n==================================================`);
+          outputChannel.appendLine(`⚡ SimpleSignal Live Benchmark: ${selected.modelId}`);
+          outputChannel.appendLine(`Endpoint: ${selected.ep.name} (${selected.ep.baseUrl})`);
+          outputChannel.appendLine(`Preset: ${presetPick.label}`);
+          outputChannel.appendLine(`--------------------------------------------------`);
+
+          const res = await BenchmarkEngine.runBenchmark(
+            selected.ep,
+            selected.modelId,
+            presetPick.presetId,
+            undefined,
+            undefined,
+            (chunk, curTok, curTPS) => {
+              progress.report({ message: `${curTok} tokens generated (${curTPS} tok/s)...` });
+            }
+          );
+
+          outputChannel.appendLine(`Result: ${res.status === 'success' ? '✅ SUCCESS' : '❌ FAILED'}`);
+          outputChannel.appendLine(`Speed: ${res.tokensPerSec} Tokens/Sec (TPS)`);
+          outputChannel.appendLine(`Time to First Token (TTFT): ${res.ttftMs} ms`);
+          outputChannel.appendLine(`Total Duration: ${(res.totalDurationMs / 1000).toFixed(2)}s`);
+          outputChannel.appendLine(`Tokens Generated: ${res.tokensGenerated}`);
+          outputChannel.appendLine(`--------------------------------------------------`);
+          outputChannel.appendLine(`Preview Output:\n${res.outputPreview}`);
+          outputChannel.appendLine(`==================================================\n`);
+
+          vscode.window.showInformationMessage(
+            `⚡ ${selected.modelId}: ${res.tokensPerSec} tok/s (TTFT: ${res.ttftMs}ms, Total: ${(res.totalDurationMs / 1000).toFixed(2)}s)`
+          );
+        } catch (err: any) {
+          vscode.window.showErrorMessage(`Benchmark failed: ${err.message || err}`);
+        }
+      }
+    );
+  });
+  context.subscriptions.push(runBenchmarkCmd);
 
   // Manage Endpoints QuickPick
   const manageCmd = vscode.commands.registerCommand('simplesignal.manageEndpoints', async () => {
@@ -325,8 +412,13 @@ export function activate(context: vscode.ExtensionContext) {
       },
       {
         label: '$(sparkle) Open SimpleSignal Visual Hub',
-        description: 'Interactive dashboard for models, endpoints & hardware',
+        description: 'Interactive dashboard for models, telemetry & benchmarks',
         action: 'dashboard',
+      },
+      {
+        label: '$(dashboard) Run Model Speed Benchmark',
+        description: 'Measure Time-to-First-Token (TTFT) and generation speed (TPS)',
+        action: 'benchmark',
       },
       {
         label: '$(add) Add New API Endpoint',
@@ -384,14 +476,16 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     const selected = await vscode.window.showQuickPick(choices, {
-      title: 'SimpleSignal - Universal Models & Memory Hub',
-      placeHolder: 'Select an action, diagnostics tool, or endpoint',
+      title: 'SimpleSignal - Universal Models & Telemetry Hub',
+      placeHolder: 'Select an action, benchmark, diagnostics tool, or endpoint',
     });
 
     if (!selected) return;
 
     if (selected.action === 'dashboard') {
       vscode.commands.executeCommand('simplesignal.openDashboard');
+    } else if (selected.action === 'benchmark') {
+      vscode.commands.executeCommand('simplesignal.runBenchmark');
     } else if (selected.action === 'vram') {
       vscode.commands.executeCommand('simplesignal.checkVRAM');
     } else if (selected.action === 'ram') {

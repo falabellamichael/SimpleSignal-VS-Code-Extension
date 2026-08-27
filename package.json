@@ -87,6 +87,11 @@
         "icon": "$(dashboard)"
       },
       {
+        "command": "simplesignal.runBenchmark",
+        "title": "SimpleSignal: Run Model Speed Benchmark",
+        "icon": "$(zap)"
+      },
+      {
         "command": "simplesignal.autoFetchModels",
         "title": "SimpleSignal: Auto-Fetch All Models & Update JSON",
         "icon": "$(sync)"
