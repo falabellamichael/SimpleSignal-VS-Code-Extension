@@ -5,7 +5,7 @@
 # ⚡ SimpleSignal (Universal AI Model Provider)
 **Broadcast Every Local & Cloud AI Model Directly Into VS Code Native UI**
 
-[![Version](https://img.shields.io/badge/version-1.0.0-yellow.svg)](https://github.com/falabellamichael/SimpleSignal-VS-Code-Extension)
+[![Version](https://img.shields.io/badge/version-1.0.1-yellow.svg)](https://github.com/falabellamichael/SimpleSignal-VS-Code-Extension)
 [![VS Code](https://img.shields.io/badge/VS%20Code-^1.90.0-007ACC.svg?logo=visualstudiocode)](https://code.visualstudio.com/)
 [![Local AI](https://img.shields.io/badge/Local%20AI-Lemonade%20%7C%20LM%20Studio%20%7C%20Ollama-green.svg)](https://lemonade-server.ai)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)

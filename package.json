@@ -2,7 +2,7 @@
   "name": "simplesignal-provider",
   "displayName": "SimpleSignal - Universal AI Model Provider",
   "description": "Stream every local and cloud AI model directly into native VS Code Chat, Inline Editor Chat (Ctrl+I), and Agent Tools with auto-fetch and auto-fill JSON configuration.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "simplesignal",
   "icon": "media/logo.png",
   "license": "MIT",
