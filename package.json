@@ -1,0 +1,246 @@
+{
+  "name": "simplesignal-provider",
+  "displayName": "SimpleSignal - Universal AI Model Provider",
+  "description": "Stream every local and cloud AI model directly into native VS Code Chat, Inline Editor Chat (Ctrl+I), and Agent Tools with auto-fetch and auto-fill JSON configuration.",
+  "version": "1.0.0",
+  "publisher": "simplesignal",
+  "icon": "media/logo.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/falabellamichael/SimpleSignal-VS-Code-Extension.git"
+  },
+  "galleryBanner": {
+    "color": "#0d0e12",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages",
+    "Machine Learning"
+  ],
+  "keywords": [
+    "simplesignal",
+    "copilot",
+    "chat",
+    "llm",
+    "lemonade",
+    "lmstudio",
+    "ollama",
+    "deepseek",
+    "qwen",
+    "openai",
+    "anthropic"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "languageModelChatProviders": [
+      {
+        "vendor": "simplesignal",
+        "displayName": "SimpleSignal (Universal Models)",
+        "managementCommand": "simplesignal.manageEndpoints"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "simplesignal-sidebar",
+          "title": "SimpleSignal Hub",
+          "icon": "media/logo.svg"
+        }
+      ]
+    },
+    "views": {
+      "simplesignal-sidebar": [
+        {
+          "id": "simplesignalExplorer",
+          "name": "SimpleSignal Models & Endpoints"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "simplesignal.checkVRAM",
+        "title": "SimpleSignal: Check VRAM & GPU Model Usage",
+        "icon": "$(circuit-board)"
+      },
+      {
+        "command": "simplesignal.checkRAM",
+        "title": "SimpleSignal: Check RAM & Running Processes",
+        "icon": "$(database)"
+      },
+      {
+        "command": "simplesignal.checkLoadedModels",
+        "title": "SimpleSignal: Inspect Loaded / Stray AI Models",
+        "icon": "$(hubot)"
+      },
+      {
+        "command": "simplesignal.openDashboard",
+        "title": "SimpleSignal: Open Visual Hub Dashboard",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "simplesignal.autoFetchModels",
+        "title": "SimpleSignal: Auto-Fetch All Models & Update JSON",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "simplesignal.manageEndpoints",
+        "title": "SimpleSignal: Manage & Add Endpoints",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "simplesignal.openConfigFile",
+        "title": "SimpleSignal: Open Endpoints JSON Configuration"
+      },
+      {
+        "command": "simplesignal.testEndpoints",
+        "title": "SimpleSignal: Test All Endpoint Connections"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "simplesignal.autoFetchModels",
+          "when": "view == simplesignalExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "simplesignal.openDashboard",
+          "when": "view == simplesignalExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "simplesignal.manageEndpoints",
+          "when": "view == simplesignalExplorer",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "SimpleSignal Configuration",
+      "properties": {
+        "simplesignal.autoScanLocalServers": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically detect and scan active local LLM servers (Lemonade on 9000, LM Studio on 1234, Ollama on 11434, etc.) on startup."
+        },
+        "simplesignal.autoFetchOnStartup": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically query all configured endpoints on VS Code startup to refresh model lists."
+        },
+        "simplesignal.endpoints": {
+          "type": "array",
+          "description": "List of AI endpoints and their models.",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "baseUrl"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Display name for this endpoint provider."
+              },
+              "baseUrl": {
+                "type": "string",
+                "description": "Base URL of the OpenAI-compatible API (e.g. http://127.0.0.1:9000/api/v1 or https://api.deepseek.com/v1)."
+              },
+              "apiKey": {
+                "type": "string",
+                "description": "API Key or token for authentication (or leave empty/dummy for local servers)."
+              },
+              "protocol": {
+                "type": "string",
+                "enum": [
+                  "openai",
+                  "ollama",
+                  "lemonade",
+                  "anthropic",
+                  "gemini"
+                ],
+                "default": "openai",
+                "description": "Protocol type used by the endpoint."
+              },
+              "enabled": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether this endpoint is enabled."
+              },
+              "customHeaders": {
+                "type": "object",
+                "description": "Optional custom HTTP headers to send with requests.",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "models": {
+                "type": "array",
+                "description": "List of models available for this endpoint (auto-populated by SimpleSignal).",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Model identifier sent to the API endpoint."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Friendly name shown in VS Code chat model picker."
+                    },
+                    "contextLength": {
+                      "type": "number",
+                      "default": 131072,
+                      "description": "Max context window length in tokens."
+                    },
+                    "maxOutputTokens": {
+                      "type": "number",
+                      "default": 8192,
+                      "description": "Maximum output tokens per response."
+                    },
+                    "supportsVision": {
+                      "type": "boolean",
+                      "default": false,
+                      "description": "Whether model supports image/vision input."
+                    },
+                    "supportsTools": {
+                      "type": "boolean",
+                      "default": true,
+                      "description": "Whether model supports function / tool calling."
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true,
+                      "description": "Enable or disable this specific model in the picker."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.4.5"
+  }
+}

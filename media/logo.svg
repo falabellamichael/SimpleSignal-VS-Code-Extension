@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Pure transparent background - adapts seamlessly to VS Code themes -->
+  <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Outer Wave -->
+    <path d="M 86.29 202.29 A 240 240 0 0 1 425.71 202.29" stroke-width="36" />
+    <!-- Middle Wave -->
+    <path d="M 142.86 258.86 A 160 160 0 0 1 369.14 258.86" stroke-width="36" />
+    <!-- Inner Wave -->
+    <path d="M 199.43 315.43 A 80 80 0 0 1 312.57 315.43" stroke-width="36" />
+    <!-- Base Dot -->
+    <circle cx="256" cy="372" r="26" fill="currentColor" stroke="none" />
+  </g>
+</svg>

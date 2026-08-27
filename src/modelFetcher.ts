@@ -1,0 +1,269 @@
+import * as vscode from 'vscode';
+import { EndpointConfig, ModelConfig } from './types';
+
+interface ProbeTarget {
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  protocol: 'openai' | 'ollama' | 'lemonade';
+  checkUrl: string;
+}
+
+const LOCAL_PROBE_TARGETS: ProbeTarget[] = [
+  {
+    name: 'Lemonade Local Server',
+    baseUrl: 'http://127.0.0.1:9000/api/v1',
+    apiKey: 'lemonade',
+    protocol: 'lemonade',
+    checkUrl: 'http://127.0.0.1:9000/api/v1/models',
+  },
+  {
+    name: 'LM Studio Local Server',
+    baseUrl: 'http://127.0.0.1:1234/v1',
+    apiKey: 'lm-studio',
+    protocol: 'openai',
+    checkUrl: 'http://127.0.0.1:1234/v1/models',
+  },
+  {
+    name: 'Ollama Local Server',
+    baseUrl: 'http://127.0.0.1:11434',
+    apiKey: '',
+    protocol: 'ollama',
+    checkUrl: 'http://127.0.0.1:11434/api/tags',
+  },
+  {
+    name: 'LocalAI / vLLM (Port 8000)',
+    baseUrl: 'http://127.0.0.1:8000/v1',
+    apiKey: '',
+    protocol: 'openai',
+    checkUrl: 'http://127.0.0.1:8000/v1/models',
+  },
+];
+
+export class ModelFetcher {
+  public static async autoFetchAllAndUpdateJSON(outputChannel?: vscode.OutputChannel): Promise<{
+    totalEndpoints: number;
+    totalModels: number;
+    updatedEndpoints: EndpointConfig[];
+  }> {
+    const config = vscode.workspace.getConfiguration('simplesignal');
+    const autoScan = config.get<boolean>('autoScanLocalServers', true);
+    let endpoints: EndpointConfig[] = JSON.parse(JSON.stringify(config.get<EndpointConfig[]>('endpoints', [])));
+
+    outputChannel?.appendLine('[SimpleSignal] Starting auto-fetch of models...');
+
+    // 1. Auto-probe local servers if enabled
+    if (autoScan) {
+      for (const target of LOCAL_PROBE_TARGETS) {
+        const alreadyExists = endpoints.some(
+          (e) => e.baseUrl.replace(/\/$/, '') === target.baseUrl.replace(/\/$/, '')
+        );
+
+        if (!alreadyExists) {
+          try {
+            const reachable = await this.checkUrlReachable(target.checkUrl, target.apiKey);
+            if (reachable) {
+              outputChannel?.appendLine(`[SimpleSignal] Auto-detected active server: ${target.name}`);
+              endpoints.push({
+                name: target.name,
+                baseUrl: target.baseUrl,
+                apiKey: target.apiKey,
+                protocol: target.protocol,
+                enabled: true,
+                models: [],
+              });
+            }
+          } catch {
+            // offline
+          }
+        }
+      }
+    }
+
+    if (endpoints.length === 0) {
+      endpoints = [
+        {
+          name: 'Lemonade Local Server',
+          baseUrl: 'http://127.0.0.1:9000/api/v1',
+          apiKey: 'lemonade',
+          protocol: 'lemonade',
+          enabled: true,
+          models: [],
+        },
+      ];
+    }
+
+    let totalFetchedModels = 0;
+
+    // 2. Query models for every endpoint
+    for (const endpoint of endpoints) {
+      if (endpoint.enabled === false) {
+        continue;
+      }
+
+      try {
+        outputChannel?.appendLine(`[SimpleSignal] Querying models from: ${endpoint.name} (${endpoint.baseUrl})...`);
+        const models = await this.fetchModelsForEndpoint(endpoint);
+        if (models.length > 0) {
+          endpoint.models = models;
+          totalFetchedModels += models.length;
+          outputChannel?.appendLine(`[SimpleSignal] -> Found ${models.length} model(s) for ${endpoint.name}`);
+        } else {
+          outputChannel?.appendLine(`[SimpleSignal] -> No models returned for ${endpoint.name} (preserving existing).`);
+        }
+      } catch (err: any) {
+        outputChannel?.appendLine(`[SimpleSignal] -> Notice for ${endpoint.name}: ${err.message || err}`);
+      }
+    }
+
+    // 3. Write back to settings.json
+    await config.update('endpoints', endpoints, vscode.ConfigurationTarget.Global);
+    outputChannel?.appendLine(`[SimpleSignal] Configuration updated in settings.json (${totalFetchedModels} total models across ${endpoints.length} endpoints).`);
+
+    return {
+      totalEndpoints: endpoints.length,
+      totalModels: totalFetchedModels,
+      updatedEndpoints: endpoints,
+    };
+  }
+
+  private static async checkUrlReachable(url: string, apiKey?: string): Promise<boolean> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+    try {
+      const headers: Record<string, string> = {};
+      if (apiKey) {
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+      const res = await fetch(url, { method: 'GET', headers, signal: controller.signal });
+      clearTimeout(timeout);
+      return res.ok || res.status === 401;
+    } catch {
+      clearTimeout(timeout);
+      return false;
+    }
+  }
+
+  public static async fetchModelsForEndpoint(endpoint: EndpointConfig): Promise<ModelConfig[]> {
+    const protocol = endpoint.protocol || 'openai';
+    const baseUrl = endpoint.baseUrl.replace(/\/$/, '');
+    const headers: Record<string, string> = {
+      'User-Agent': 'VSCode-SimpleSignal/1.0',
+      ...(endpoint.customHeaders || {}),
+    };
+
+    if (endpoint.apiKey) {
+      if (protocol === 'anthropic') {
+        headers['x-api-key'] = endpoint.apiKey;
+        headers['anthropic-version'] = '2023-06-01';
+      } else {
+        headers['Authorization'] = `Bearer ${endpoint.apiKey}`;
+      }
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    try {
+      if (protocol === 'ollama') {
+        const url = baseUrl.includes('/api/tags') ? baseUrl : `${baseUrl}/api/tags`;
+        const res = await fetch(url, { headers, signal: controller.signal });
+        clearTimeout(timeout);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        const data: any = await res.json();
+        const modelsList: any[] = data.models || [];
+        return modelsList.map((m) => {
+          const id = m.name || m.model;
+          return {
+            id,
+            name: `${id} [${endpoint.name}]`,
+            contextLength: 131072,
+            maxOutputTokens: 8192,
+            supportsVision: id.toLowerCase().includes('vision') || id.toLowerCase().includes('vl') || id.toLowerCase().includes('llava'),
+            supportsTools: true,
+            enabled: true,
+            endpointName: endpoint.name,
+          };
+        });
+      }
+
+      if (protocol === 'gemini') {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${endpoint.apiKey || ''}`;
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        const data: any = await res.json();
+        const modelsList: any[] = (data.models || []).filter((m: any) =>
+          m.supportedGenerationMethods?.includes('generateContent')
+        );
+        return modelsList.map((m) => {
+          const id = m.name?.replace(/^models\//, '') || m.displayName;
+          return {
+            id,
+            name: `${m.displayName || id} [${endpoint.name}]`,
+            contextLength: m.inputTokenLimit || 1000000,
+            maxOutputTokens: m.outputTokenLimit || 8192,
+            supportsVision: true,
+            supportsTools: true,
+            enabled: true,
+            endpointName: endpoint.name,
+          };
+        });
+      }
+
+      // OpenAI / Lemonade / LM Studio / DeepSeek / DashScope compatible
+      let modelsUrl = baseUrl;
+      if (baseUrl.endsWith('/chat/completions')) {
+        modelsUrl = baseUrl.replace(/\/chat\/completions$/, '/models');
+      } else if (!baseUrl.endsWith('/models')) {
+        modelsUrl = `${baseUrl}/models`;
+      }
+
+      const res = await fetch(modelsUrl, { headers, signal: controller.signal });
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+
+      const data: any = await res.json();
+      const rawList: any[] = Array.isArray(data) ? data : data.data || data.models || [];
+
+      return rawList.map((m) => {
+        const id = typeof m === 'string' ? m : m.id || m.name || m.checkpoint;
+        const labels: string[] = m.labels || [];
+        const isVision =
+          labels.includes('vision') ||
+          id.toLowerCase().includes('vision') ||
+          id.toLowerCase().includes('vl') ||
+          id.toLowerCase().includes('4o') ||
+          id.toLowerCase().includes('coyote') ||
+          id.toLowerCase().includes('snowfox');
+        const isTools = !labels.includes('no-tools');
+        const contextLen =
+          m.max_context_window ||
+          m.context_length ||
+          m.recipe_options?.ctx_size ||
+          (id.toLowerCase().includes('deepseek') || id.toLowerCase().includes('qwen') ? 262144 : 131072);
+
+        return {
+          id,
+          name: `${id} [${endpoint.name}]`,
+          contextLength: contextLen,
+          maxOutputTokens: 8192,
+          supportsVision: isVision,
+          supportsTools: isTools,
+          enabled: true,
+          endpointName: endpoint.name,
+        };
+      });
+    } catch (err: any) {
+      clearTimeout(timeout);
+      throw err;
+    }
+  }
+}
