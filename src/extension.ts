@@ -416,7 +416,7 @@ export function activate(context: vscode.ExtensionContext) {
         action: 'dashboard',
       },
       {
-        label: '$(dashboard) Run Model Speed Benchmark',
+        label: '$(zap) Performance Benchmark',
         description: 'Measure Time-to-First-Token (TTFT) and generation speed (TPS)',
         action: 'benchmark',
       },

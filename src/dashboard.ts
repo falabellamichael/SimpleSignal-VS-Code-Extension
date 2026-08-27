@@ -755,10 +755,10 @@ export class SimpleSignalDashboard {
       📡 Signal Endpoints & Models
     </button>
     <button class="tab-btn" onclick="switchTab('tab-benchmarks')">
-      ⚡ Benchmark & Speed Arena
+      ⚡ Performance
     </button>
     <button class="tab-btn" onclick="switchTab('tab-telemetry')">
-      📊 Hardware & Memory Telemetry
+      📊 Hardware Telemetry
     </button>
   </div>
 
@@ -817,12 +817,12 @@ export class SimpleSignalDashboard {
     </div>
   </div>
 
-  <!-- TAB 2: BENCHMARK ARENA -->
+  <!-- TAB 2: PERFORMANCE -->
   <div id="tab-benchmarks" class="tab-content">
     <div class="benchmark-panel">
-      <!-- Benchmark Controller -->
+      <!-- Performance Controller -->
       <div class="benchmark-card">
-        <h3 style="margin-top: 0; color: var(--neon-accent); font-size: 15px;">⚡ Model Benchmark Setup</h3>
+        <h3 style="margin-top: 0; color: var(--neon-accent); font-size: 15px;">⚡ Model Performance Setup</h3>
         
         <div class="benchmark-form-group">
           <label>Target Model & Endpoint</label>
@@ -834,7 +834,7 @@ export class SimpleSignalDashboard {
         </div>
 
         <div class="benchmark-form-group">
-          <label>Benchmark Preset</label>
+          <label>Performance Preset</label>
           <select id="benchPresetSelect" class="select-box" style="width: 100%;">
             <option value="quick_speed">🚀 Quick Speed (64 Tokens)</option>
             <option value="code_gen">💻 Luau & Code Synthesis (200 Tokens)</option>
@@ -844,10 +844,10 @@ export class SimpleSignalDashboard {
 
         <div style="display: flex; gap: 8px; margin-top: 16px;">
           <button class="btn btn-primary-neon" style="flex: 1;" onclick="startBenchmark()">
-            ▶️ Run Benchmark
+            ▶️ Run Performance Test
           </button>
           <button class="btn btn-secondary" onclick="startBatchBenchmark()" title="Run speed test across all models">
-            🔥 Benchmark All
+            🔥 Test All Models
           </button>
         </div>
       </div>
@@ -876,14 +876,14 @@ export class SimpleSignalDashboard {
         <div style="font-size: 11px; color: var(--muted-text); margin-bottom: 6px; font-weight: 600; text-transform: uppercase;">
           Live Stream Output Preview
         </div>
-        <div class="live-stream-box" id="streamOutput">Waiting to run benchmark...</div>
+        <div class="live-stream-box" id="streamOutput">Waiting to run performance test...</div>
       </div>
     </div>
 
     <!-- Leaderboard -->
     <div class="table-container">
       <div style="padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--card-border);">
-        <h3 style="margin: 0; font-size: 14px; color: var(--neon-accent);">🏆 Model Speed Leaderboard</h3>
+        <h3 style="margin: 0; font-size: 14px; color: var(--neon-accent);">🏆 Model Performance Leaderboard</h3>
         <button class="card-btn" onclick="clearHistory()">Clear History</button>
       </div>
       <table>
