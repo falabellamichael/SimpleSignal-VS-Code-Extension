@@ -319,9 +319,29 @@ function activate(context) {
         const endpoints = config.get('endpoints', []);
         const choices = [
             {
+                label: '$(sync) Auto-Fetch & Fill JSON',
+                description: 'Query all active endpoints & write to settings.json',
+                action: 'autofetch',
+            },
+            {
                 label: '$(sparkle) Open SimpleSignal Visual Hub',
                 description: 'Interactive dashboard for models, endpoints & hardware',
                 action: 'dashboard',
+            },
+            {
+                label: '$(add) Add New API Endpoint',
+                description: 'Configure OpenAI, Lemonade, Ollama, DashScope, DeepSeek, etc.',
+                action: 'add',
+            },
+            {
+                label: '$(pulse) Test Endpoint Connections',
+                description: 'Verify connectivity for each configured endpoint',
+                action: 'test',
+            },
+            {
+                label: '$(gear) Open Settings JSON',
+                description: 'Edit simplesignal.endpoints directly in settings.json',
+                action: 'settings',
             },
             {
                 label: '$(circuit-board) Check VRAM & GPU Model Memory',
@@ -337,26 +357,6 @@ function activate(context) {
                 label: '$(hubot) Inspect Loaded / Stray AI Models',
                 description: 'Find & unload stray models loaded in background',
                 action: 'stray',
-            },
-            {
-                label: '$(sync) Auto-Fetch & Fill JSON',
-                description: 'Query all active endpoints & write to settings.json',
-                action: 'autofetch',
-            },
-            {
-                label: '$(add) Add New API Endpoint',
-                description: 'Configure OpenAI, Lemonade, Ollama, DashScope, DeepSeek, etc.',
-                action: 'add',
-            },
-            {
-                label: '$(gear) Open Settings JSON',
-                description: 'Edit simplesignal.endpoints directly in settings.json',
-                action: 'settings',
-            },
-            {
-                label: '$(pulse) Test Endpoint Connections',
-                description: 'Verify connectivity for each configured endpoint',
-                action: 'test',
             },
             {
                 label: '$(github) Open GitHub Repository',

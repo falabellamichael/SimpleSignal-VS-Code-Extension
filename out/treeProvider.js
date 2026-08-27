@@ -97,12 +97,6 @@ class SimpleSignalTreeDataProvider {
             return allModels.map(({ model, epName }) => this.createModelNode(model, epName));
         }
         if (element.contextValue === 'category_actions') {
-            const checkVramAction = new TreeItemNode('Check VRAM (GPU Memory & Models)', vscode.TreeItemCollapsibleState.None, 'action', new vscode.ThemeIcon('circuit-board', new vscode.ThemeColor('charts.yellow')));
-            checkVramAction.command = { command: 'simplesignal.checkVRAM', title: 'Check VRAM' };
-            const checkRamAction = new TreeItemNode('Check RAM (System Memory & Processes)', vscode.TreeItemCollapsibleState.None, 'action', new vscode.ThemeIcon('database', new vscode.ThemeColor('charts.green')));
-            checkRamAction.command = { command: 'simplesignal.checkRAM', title: 'Check RAM' };
-            const checkModelsAction = new TreeItemNode('Inspect Loaded / Stray Models', vscode.TreeItemCollapsibleState.None, 'action', new vscode.ThemeIcon('hubot', new vscode.ThemeColor('charts.orange')));
-            checkModelsAction.command = { command: 'simplesignal.checkLoadedModels', title: 'Inspect Models' };
             const autoFetchAction = new TreeItemNode('Auto-Fetch All Models & Fill JSON', vscode.TreeItemCollapsibleState.None, 'action', new vscode.ThemeIcon('sync', new vscode.ThemeColor('charts.purple')));
             autoFetchAction.command = { command: 'simplesignal.autoFetchModels', title: 'Auto-Fetch Models' };
             const addAction = new TreeItemNode('Add New Endpoint', vscode.TreeItemCollapsibleState.None, 'action', new vscode.ThemeIcon('add', new vscode.ThemeColor('charts.blue')));
@@ -113,6 +107,12 @@ class SimpleSignalTreeDataProvider {
             testAction.command = { command: 'simplesignal.testEndpoints', title: 'Test Connections' };
             const openJsonAction = new TreeItemNode('Edit settings.json', vscode.TreeItemCollapsibleState.None, 'action', new vscode.ThemeIcon('json'));
             openJsonAction.command = { command: 'simplesignal.openConfigFile', title: 'Open Settings JSON' };
+            const checkVramAction = new TreeItemNode('Check VRAM (GPU Memory & Models)', vscode.TreeItemCollapsibleState.None, 'action', new vscode.ThemeIcon('circuit-board', new vscode.ThemeColor('charts.yellow')));
+            checkVramAction.command = { command: 'simplesignal.checkVRAM', title: 'Check VRAM' };
+            const checkRamAction = new TreeItemNode('Check RAM (System Memory & Processes)', vscode.TreeItemCollapsibleState.None, 'action', new vscode.ThemeIcon('database', new vscode.ThemeColor('charts.green')));
+            checkRamAction.command = { command: 'simplesignal.checkRAM', title: 'Check RAM' };
+            const checkModelsAction = new TreeItemNode('Inspect Loaded / Stray Models', vscode.TreeItemCollapsibleState.None, 'action', new vscode.ThemeIcon('hubot', new vscode.ThemeColor('charts.orange')));
+            checkModelsAction.command = { command: 'simplesignal.checkLoadedModels', title: 'Inspect Models' };
             const githubAction = new TreeItemNode('GitHub Repository', vscode.TreeItemCollapsibleState.None, 'action', new vscode.ThemeIcon('github'));
             githubAction.command = {
                 command: 'vscode.open',
@@ -120,14 +120,14 @@ class SimpleSignalTreeDataProvider {
                 arguments: [vscode.Uri.parse('https://github.com/falabellamichael/SimpleSignal-VS-Code-Extension')],
             };
             return [
-                checkVramAction,
-                checkRamAction,
-                checkModelsAction,
                 autoFetchAction,
                 addAction,
                 openDashboardAction,
                 testAction,
                 openJsonAction,
+                checkVramAction,
+                checkRamAction,
+                checkModelsAction,
                 githubAction,
             ];
         }
