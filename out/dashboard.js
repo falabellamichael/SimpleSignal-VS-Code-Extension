@@ -750,13 +750,13 @@ class SimpleSignalDashboard {
 
   <!-- Navigation Tabs -->
   <div class="tabs-nav">
-    <button class="tab-btn active" id="btn-tab-endpoints" onclick="switchTab('tab-endpoints', this)">
+    <button class="tab-btn active" id="btn-tab-endpoints" data-target="tab-endpoints" onclick="switchTab('tab-endpoints', this)">
       📡 Signal Endpoints & Models
     </button>
-    <button class="tab-btn" id="btn-tab-benchmarks" onclick="switchTab('tab-benchmarks', this)">
+    <button class="tab-btn" id="btn-tab-benchmarks" data-target="tab-benchmarks" onclick="switchTab('tab-benchmarks', this)">
       ⚡ Performance
     </button>
-    <button class="tab-btn" id="btn-tab-telemetry" onclick="switchTab('tab-telemetry', this)">
+    <button class="tab-btn" id="btn-tab-telemetry" data-target="tab-telemetry" onclick="switchTab('tab-telemetry', this)">
       📊 Hardware Telemetry
     </button>
   </div>
@@ -972,8 +972,11 @@ class SimpleSignalDashboard {
 
     function switchTab(tabId, btn) {
       try {
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => {
+        const allBtns = document.querySelectorAll('.tab-btn');
+        allBtns.forEach(b => b.classList.remove('active'));
+
+        const allTabs = document.querySelectorAll('.tab-content');
+        allTabs.forEach(c => {
           c.classList.remove('active');
           c.style.display = 'none';
         });
@@ -997,6 +1000,23 @@ class SimpleSignalDashboard {
       } catch (err) {
         console.error('switchTab error:', err);
       }
+    }
+
+    function initTabs() {
+      const tabButtons = document.querySelectorAll('.tab-btn');
+      tabButtons.forEach(btn => {
+        btn.addEventListener('click', function(e) {
+          e.preventDefault();
+          const target = this.getAttribute('data-target') || this.id.replace('btn-', '');
+          switchTab(target, this);
+        });
+      });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initTabs);
+    } else {
+      initTabs();
     }
 
     function triggerAutoFetch() { vscode.postMessage({ command: 'autoFetch' }); }
