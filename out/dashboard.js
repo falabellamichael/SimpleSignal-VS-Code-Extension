@@ -841,7 +841,7 @@ class SimpleSignalDashboard {
           <select id="benchPresetSelect" class="select-box" style="width: 100%;">
             <option value="quick_speed">🚀 Quick Speed (64 Tokens)</option>
             <option value="code_gen">🎮 Lua 200-Line Sudoku Game (900 Tokens)</option>
-            <option value="reasoning_stress">🧠 Deep Reasoning (350 Tokens)</option>
+            <option value="reasoning_stress">🧠 Complex Algorithm (400 Tokens)</option>
           </select>
         </div>
 

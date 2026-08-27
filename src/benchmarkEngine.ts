@@ -15,15 +15,15 @@ export class BenchmarkEngine {
       id: 'code_gen',
       name: '🎮 Lua 200-Line Sudoku Game (900 Tokens)',
       description: 'Instructs the model to write a full ~200-line Sudoku game in Lua with generator, backtracking solver, validator, and game loop.',
-      prompt: 'Write a complete, playable 200-line Sudoku game in pure Lua (or Luau). Include: 1. A 9x9 board representation with grid printing and ASCII formatting. 2. A recursive backtracking Sudoku solver to validate solutions and solve boards. 3. A puzzle generator with difficulty levels that removes numbers while ensuring a unique solution. 4. Input validation (check row, column, and 3x3 subgrid constraints). 5. An interactive game loop allowing the player to place numbers, check errors, and ask for hints. Include helpful comments and structure it cleanly so it reaches approximately 200 lines of robust code.',
+      prompt: 'Write a complete, playable 200-line Sudoku game in pure Lua (or Luau). Output pure code immediately with no thinking or explanation. Include: 1. A 9x9 board representation with grid printing and ASCII formatting. 2. A recursive backtracking Sudoku solver to validate solutions and solve boards. 3. A puzzle generator with difficulty levels that removes numbers while ensuring a unique solution. 4. Input validation (check row, column, and 3x3 subgrid constraints). 5. An interactive game loop allowing the player to place numbers, check errors, and ask for hints. Include helpful comments and structure it cleanly so it reaches approximately 200 lines of robust code.',
       maxTokens: 900,
     },
     {
       id: 'reasoning_stress',
-      name: '🧠 Deep Reasoning & Logic (350 Tokens)',
-      description: 'Complex multi-step logic problem to stress test reasoning throughput.',
-      prompt: 'Solve step-by-step: If 5 machines take 5 minutes to make 5 widgets, how long would it take 100 machines to make 100 widgets? Then explain the mathematical principle involved.',
-      maxTokens: 350,
+      name: '🧠 Complex Algorithm & Logic (400 Tokens)',
+      description: 'Complex graph search and algorithm prompt measuring pure synthesis throughput without thinking overhead.',
+      prompt: 'Implement a high-performance A* Pathfinding Algorithm with a Min-Heap Priority Queue in pure Lua. Include distance heuristics, neighbor traversal, and optimal path reconstruction. Output direct code immediately.',
+      maxTokens: 400,
     },
   ];
 
@@ -69,7 +69,7 @@ export class BenchmarkEngine {
   }
 
   /**
-   * OpenAI-compatible streaming benchmark.
+   * OpenAI-compatible streaming benchmark with reasoning/thinking disabled.
    */
   private static async runOpenAIBenchmark(
     endpoint: EndpointConfig,
@@ -86,10 +86,20 @@ export class BenchmarkEngine {
 
     const payload = JSON.stringify({
       model: modelId,
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a fast benchmark test runner. Output direct code/answers immediately with ZERO internal thoughts, reasoning tokens, or <think> tags. Do not explain your thought process.',
+        },
+        { role: 'user', content: prompt },
+      ],
       max_tokens: maxTokens,
       temperature: 0.1,
       stream: true,
+      enable_thinking: false, // DashScope Qwen / QwQ
+      thinking: { type: 'disabled' }, // Anthropic / OpenRouter
+      reasoning_effort: 'none', // OpenAI o-series / DeepSeek
+      chat_template_kwargs: { enable_thinking: false },
     });
 
     const headers: Record<string, string> = {
@@ -107,6 +117,7 @@ export class BenchmarkEngine {
     let tokensGenerated = 0;
     let outputText = '';
     let promptTokens = 0;
+    let isInsideThinkTag = false;
 
     return new Promise<BenchmarkResult>((resolve) => {
       const req = client.request(
@@ -159,11 +170,28 @@ export class BenchmarkEngine {
               try {
                 const parsed = JSON.parse(data);
                 const delta = parsed.choices?.[0]?.delta;
-                const content = delta?.content || delta?.reasoning_content || '';
+                // Exclude reasoning_content completely
+                let content = delta?.content || '';
 
                 if (parsed.usage) {
                   if (parsed.usage.completion_tokens) tokensGenerated = parsed.usage.completion_tokens;
                   if (parsed.usage.prompt_tokens) promptTokens = parsed.usage.prompt_tokens;
+                }
+
+                // Filter out any raw <think> tags if emitted by model
+                if (content.includes('<think>')) {
+                  isInsideThinkTag = true;
+                  content = content.replace(/<think>[\s\S]*?<\/think>/g, '');
+                  if (content.includes('<think>')) {
+                    content = content.replace(/<think>[\s\S]*/g, '');
+                  }
+                } else if (isInsideThinkTag) {
+                  if (content.includes('</think>')) {
+                    isInsideThinkTag = false;
+                    content = content.replace(/[\s\S]*?<\/think>/g, '');
+                  } else {
+                    content = ''; // Suppress thought chunks
+                  }
                 }
 
                 if (content) {
@@ -171,7 +199,6 @@ export class BenchmarkEngine {
                     firstTokenTime = Date.now();
                   }
                   outputText += content;
-                  // Approximate token count if usage wasn't emitted per chunk
                   const estimatedChunkTokens = Math.max(1, Math.ceil(content.length / 3.8));
                   tokensGenerated += estimatedChunkTokens;
 
@@ -195,7 +222,6 @@ export class BenchmarkEngine {
             const generationDurationMs = firstTokenTime ? endTime - firstTokenTime : endTime - startTime;
             const genSeconds = Math.max(0.001, generationDurationMs / 1000);
 
-            // Refine token count based on final text if usage was absent
             if (tokensGenerated === 0 && outputText) {
               tokensGenerated = Math.max(1, Math.ceil(outputText.length / 3.8));
             }
@@ -274,7 +300,7 @@ export class BenchmarkEngine {
   }
 
   /**
-   * Ollama native streaming benchmark (/api/generate).
+   * Ollama native streaming benchmark without thinking overhead.
    */
   private static async runOllamaBenchmark(
     endpoint: EndpointConfig,
@@ -291,6 +317,7 @@ export class BenchmarkEngine {
     const payload = JSON.stringify({
       model: modelId,
       prompt,
+      system: 'You are a fast benchmark test runner. Output direct code/response only. Do NOT output thinking, reasoning traces, or <think> tags.',
       options: {
         num_predict: maxTokens,
         temperature: 0.1,
@@ -304,6 +331,7 @@ export class BenchmarkEngine {
     let outputText = '';
     let ollamaEvalCount = 0;
     let ollamaEvalDurationNs = 0;
+    let isInsideThinkTag = false;
 
     return new Promise<BenchmarkResult>((resolve) => {
       const req = client.request(
@@ -330,17 +358,37 @@ export class BenchmarkEngine {
 
               try {
                 const parsed = JSON.parse(trimmed);
-                if (parsed.response) {
-                  if (!firstTokenTime) firstTokenTime = Date.now();
-                  outputText += parsed.response;
-                  tokensGenerated++;
+                let responseText = parsed.response || '';
 
-                  const now = Date.now();
-                  const elapsedGenSec = Math.max(0.001, (now - firstTokenTime) / 1000);
-                  const currentTPS = parseFloat((tokensGenerated / elapsedGenSec).toFixed(1));
+                if (responseText) {
+                  // Filter out think tags
+                  if (responseText.includes('<think>')) {
+                    isInsideThinkTag = true;
+                    responseText = responseText.replace(/<think>[\s\S]*?<\/think>/g, '');
+                    if (responseText.includes('<think>')) {
+                      responseText = responseText.replace(/<think>[\s\S]*/g, '');
+                    }
+                  } else if (isInsideThinkTag) {
+                    if (responseText.includes('</think>')) {
+                      isInsideThinkTag = false;
+                      responseText = responseText.replace(/[\s\S]*?<\/think>/g, '');
+                    } else {
+                      responseText = '';
+                    }
+                  }
 
-                  if (onProgress) {
-                    onProgress(parsed.response, tokensGenerated, currentTPS);
+                  if (responseText) {
+                    if (!firstTokenTime) firstTokenTime = Date.now();
+                    outputText += responseText;
+                    tokensGenerated++;
+
+                    const now = Date.now();
+                    const elapsedGenSec = Math.max(0.001, (now - firstTokenTime) / 1000);
+                    const currentTPS = parseFloat((tokensGenerated / elapsedGenSec).toFixed(1));
+
+                    if (onProgress) {
+                      onProgress(responseText, tokensGenerated, currentTPS);
+                    }
                   }
                 }
 
