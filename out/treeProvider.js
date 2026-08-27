@@ -113,6 +113,12 @@ class SimpleSignalTreeDataProvider {
             testAction.command = { command: 'simplesignal.testEndpoints', title: 'Test Connections' };
             const openJsonAction = new TreeItemNode('Edit settings.json', vscode.TreeItemCollapsibleState.None, 'action', new vscode.ThemeIcon('json'));
             openJsonAction.command = { command: 'simplesignal.openConfigFile', title: 'Open Settings JSON' };
+            const githubAction = new TreeItemNode('GitHub Repository', vscode.TreeItemCollapsibleState.None, 'action', new vscode.ThemeIcon('github'));
+            githubAction.command = {
+                command: 'vscode.open',
+                title: 'Open GitHub Repository',
+                arguments: [vscode.Uri.parse('https://github.com/falabellamichael/SimpleSignal-VS-Code-Extension')],
+            };
             return [
                 checkVramAction,
                 checkRamAction,
@@ -122,6 +128,7 @@ class SimpleSignalTreeDataProvider {
                 openDashboardAction,
                 testAction,
                 openJsonAction,
+                githubAction,
             ];
         }
         return [];

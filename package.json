@@ -103,6 +103,11 @@
       {
         "command": "simplesignal.testEndpoints",
         "title": "SimpleSignal: Test All Endpoint Connections"
+      },
+      {
+        "command": "simplesignal.openGitHub",
+        "title": "SimpleSignal: Open GitHub Repository",
+        "icon": "$(github)"
       }
     ],
     "menus": {

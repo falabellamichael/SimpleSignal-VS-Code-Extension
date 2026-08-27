@@ -358,6 +358,11 @@ export function activate(context: vscode.ExtensionContext) {
         description: 'Verify connectivity for each configured endpoint',
         action: 'test',
       },
+      {
+        label: '$(github) Open GitHub Repository',
+        description: 'View source, issues & docs on GitHub',
+        action: 'github',
+      },
     ];
 
     if (endpoints.length > 0) {
@@ -395,6 +400,8 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.commands.executeCommand('simplesignal.checkLoadedModels');
     } else if (selected.action === 'autofetch') {
       vscode.commands.executeCommand('simplesignal.autoFetchModels');
+    } else if (selected.action === 'github') {
+      vscode.commands.executeCommand('simplesignal.openGitHub');
     } else if (selected.action === 'add') {
       await promptAddNewEndpoint();
     } else if (selected.action === 'settings') {
@@ -406,6 +413,12 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
   context.subscriptions.push(manageCmd);
+
+  // GitHub command
+  const openGitHubCmd = vscode.commands.registerCommand('simplesignal.openGitHub', () => {
+    vscode.env.openExternal(vscode.Uri.parse('https://github.com/falabellamichael/SimpleSignal-VS-Code-Extension'));
+  });
+  context.subscriptions.push(openGitHubCmd);
 
   // Open config file command
   const openConfigCmd = vscode.commands.registerCommand('simplesignal.openConfigFile', () => {
