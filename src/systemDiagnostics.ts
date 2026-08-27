@@ -282,6 +282,19 @@ export class SystemDiagnostics {
         const parts = nvidiaOut.split(',');
         gpuName = parts[0]?.trim() || gpuName;
         usedVRAM_MB = parseFloat(parts[1]?.trim()) || 0;
+      } else {
+        // Check rocm-smi for AMD GPUs on Linux
+        const rocmOut = await this.runCommand('rocm-smi --showmeminfo vram --json');
+        if (rocmOut) {
+          try {
+            const parsed = JSON.parse(rocmOut);
+            const cardKey = Object.keys(parsed)[0];
+            if (cardKey && parsed[cardKey]['VRAM Total Used Memory (B)']) {
+              gpuName = 'AMD Radeon / ROCm GPU';
+              usedVRAM_MB = parseFloat((parseInt(parsed[cardKey]['VRAM Total Used Memory (B)'], 10) / (1024 * 1024)).toFixed(1));
+            }
+          } catch {}
+        }
       }
     }
 
