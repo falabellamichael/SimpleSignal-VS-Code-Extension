@@ -37,6 +37,7 @@ exports.BenchmarkEngine = void 0;
 const http = __importStar(require("http"));
 const https = __importStar(require("https"));
 const telemetryTracker_1 = require("./telemetryTracker");
+const utils_1 = require("./utils");
 class BenchmarkEngine {
     static PRESETS = [
         {
@@ -154,8 +155,9 @@ class BenchmarkEngine {
             'Content-Length': Buffer.byteLength(payload).toString(),
             ...(endpoint.customHeaders || {}),
         };
-        if (endpoint.apiKey) {
-            headers['Authorization'] = `Bearer ${endpoint.apiKey}`;
+        const apiKey = (0, utils_1.resolveEndpointApiKey)(endpoint);
+        if (apiKey) {
+            headers['Authorization'] = `Bearer ${apiKey}`;
         }
         const startTime = Date.now();
         let firstTokenTime = 0;

@@ -35,6 +35,8 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.convertMessagesToOpenAI = convertMessagesToOpenAI;
 exports.convertToolsToOpenAI = convertToolsToOpenAI;
+exports.resolveEndpointApiKey = resolveEndpointApiKey;
+exports.getApiKeyCandidates = getApiKeyCandidates;
 const vscode = __importStar(require("vscode"));
 /**
  * Converts VS Code chat messages to OpenAI-compatible messages format.
@@ -149,5 +151,95 @@ function collectToolResultText(part) {
         }
     }
     return text;
+}
+/**
+ * Automatically grabs and resolves active API keys from configuration,
+ * environment variables, and known server credentials.
+ */
+function resolveEndpointApiKey(endpoint) {
+    const candidates = getApiKeyCandidates(endpoint);
+    return candidates[0] || '';
+}
+/**
+ * Returns prioritized list of candidate API keys for an endpoint.
+ */
+function getApiKeyCandidates(endpoint) {
+    const candidates = [];
+    const configKey = (endpoint.apiKey || '').trim();
+    const urlLower = (endpoint.baseUrl || '').toLowerCase();
+    const nameLower = (endpoint.name || '').toLowerCase();
+    const add = (k) => {
+        if (k && typeof k === 'string' && k.trim() && !candidates.includes(k.trim())) {
+            candidates.push(k.trim());
+        }
+    };
+    // 1. Check Lemonade Server
+    if (urlLower.includes(':9000') || urlLower.includes(':13305') || nameLower.includes('lemonade')) {
+        add(process.env.LEMONADE_API_KEY);
+        add(process.env.LEMONADE_ADMIN_API_KEY);
+        if (configKey && configKey !== 'lemonade' && !configKey.startsWith('${')) {
+            add(configKey);
+        }
+        add('local-lemonade');
+        add('sk-local-lemonade');
+        if (configKey)
+            add(configKey);
+        add('lemonade');
+        return candidates;
+    }
+    // 2. Check DashScope / Qwen / Alibaba
+    if (urlLower.includes('aliyuncs.com') ||
+        urlLower.includes('dashscope') ||
+        nameLower.includes('dashscope') ||
+        nameLower.includes('qwen') ||
+        nameLower.includes('alibaba')) {
+        if (configKey && !configKey.startsWith('${') && configKey !== 'dummy')
+            add(configKey);
+        add(process.env.DASHSCOPE_API_KEY);
+        add(process.env.QWEN_API_KEY);
+        add(process.env.ALIBABA_API_KEY);
+        add(process.env.CUSTOM_OAI_API_KEY);
+        add(process.env.OPENAI_API_KEY);
+        return candidates;
+    }
+    // 3. Check DeepSeek
+    if (urlLower.includes('deepseek') || nameLower.includes('deepseek')) {
+        if (configKey && !configKey.startsWith('${') && configKey !== 'dummy')
+            add(configKey);
+        add(process.env.DEEPSEEK_API_KEY);
+        add(process.env.OPENAI_API_KEY);
+        return candidates;
+    }
+    // 4. Check LM Studio
+    if (urlLower.includes(':1234') || nameLower.includes('lm studio')) {
+        add(process.env.LM_STUDIO_API_KEY);
+        if (configKey && !configKey.startsWith('${'))
+            add(configKey);
+        add('lm-studio');
+        return candidates;
+    }
+    // 5. Check Ollama
+    if (urlLower.includes(':11434') || nameLower.includes('ollama')) {
+        if (configKey)
+            add(configKey);
+        add('ollama');
+        return candidates;
+    }
+    // 6. Check OpenAI
+    if (urlLower.includes('openai.com') || nameLower.includes('openai')) {
+        if (configKey && !configKey.startsWith('${'))
+            add(configKey);
+        add(process.env.OPENAI_API_KEY);
+        add(process.env.CUSTOM_OAI_API_KEY);
+        return candidates;
+    }
+    // 7. General Fallback
+    if (configKey && !configKey.startsWith('${'))
+        add(configKey);
+    add(process.env.OPENAI_API_KEY);
+    add(process.env.DASHSCOPE_API_KEY);
+    add(process.env.QWEN_API_KEY);
+    add(process.env.DEEPSEEK_API_KEY);
+    return candidates;
 }
 //# sourceMappingURL=utils.js.map

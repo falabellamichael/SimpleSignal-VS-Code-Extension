@@ -148,14 +148,6 @@ class SimpleSignalChatProvider {
         if (!chatUrl.endsWith('/chat/completions')) {
             chatUrl = `${baseUrl}/chat/completions`;
         }
-        const headers = {
-            'Content-Type': 'application/json',
-            'User-Agent': 'VSCode-SimpleSignal/1.0',
-            ...(targetEndpoint.customHeaders || {}),
-        };
-        if (targetEndpoint.apiKey) {
-            headers['Authorization'] = `Bearer ${targetEndpoint.apiKey}`;
-        }
         const openAIMessages = (0, utils_1.convertMessagesToOpenAI)(messages);
         const { tools, tool_choice } = (0, utils_1.convertToolsToOpenAI)(options);
         const body = {
@@ -173,17 +165,43 @@ class SimpleSignalChatProvider {
             this.outputChannel.appendLine(`[SimpleSignal] Request cancelled.`);
             telemetryTracker_1.ModelTelemetryTracker.failMessage(telemetrySession.id, 'Request cancelled by user or VS Code');
         });
+        // Auto-grab candidate API keys (from config, environment, or known defaults)
+        const candidateKeys = (0, utils_1.getApiKeyCandidates)(targetEndpoint);
+        if (candidateKeys.length === 0) {
+            candidateKeys.push('');
+        }
         try {
-            const response = await fetch(chatUrl, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(body),
-                signal: abortController.signal,
-            });
-            if (!response.ok) {
-                const errText = await response.text().catch(() => '');
-                this.outputChannel.appendLine(`[SimpleSignal] HTTP Error ${response.status}: ${errText}`);
-                const errMsg = `SimpleSignal request failed: ${response.status} ${response.statusText} - ${errText}`;
+            let response;
+            let lastErrText = '';
+            for (const apiKey of candidateKeys) {
+                if (token.isCancellationRequested)
+                    break;
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'VSCode-SimpleSignal/1.0',
+                    ...(targetEndpoint.customHeaders || {}),
+                };
+                if (apiKey) {
+                    headers['Authorization'] = `Bearer ${apiKey}`;
+                }
+                const res = await fetch(chatUrl, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify(body),
+                    signal: abortController.signal,
+                });
+                if (res.status === 401 && candidateKeys.length > 1 && apiKey !== candidateKeys[candidateKeys.length - 1]) {
+                    lastErrText = await res.text().catch(() => '');
+                    this.outputChannel.appendLine(`[SimpleSignal] Key "${apiKey.slice(0, 6)}..." received 401, trying next candidate key...`);
+                    continue;
+                }
+                response = res;
+                break;
+            }
+            if (!response || !response.ok) {
+                const errText = response ? await response.text().catch(() => '') : lastErrText;
+                this.outputChannel.appendLine(`[SimpleSignal] HTTP Error ${response?.status || 401}: ${errText}`);
+                const errMsg = `SimpleSignal request failed: ${response?.status || 401} ${response?.statusText || 'Unauthorized'} - ${errText}`;
                 telemetryTracker_1.ModelTelemetryTracker.failMessage(telemetrySession.id, errMsg);
                 throw new Error(errMsg);
             }

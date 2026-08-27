@@ -35,11 +35,12 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ModelFetcher = void 0;
 const vscode = __importStar(require("vscode"));
+const utils_1 = require("./utils");
 const LOCAL_PROBE_TARGETS = [
     {
         name: 'Lemonade Local Server',
         baseUrl: 'http://127.0.0.1:9000/api/v1',
-        apiKey: 'lemonade',
+        apiKey: 'local-lemonade',
         protocol: 'lemonade',
         checkUrl: 'http://127.0.0.1:9000/api/v1/models',
     },
@@ -77,13 +78,22 @@ class ModelFetcher {
                 const alreadyExists = endpoints.some((e) => e.baseUrl.replace(/\/$/, '') === target.baseUrl.replace(/\/$/, ''));
                 if (!alreadyExists) {
                     try {
-                        const reachable = await this.checkUrlReachable(target.checkUrl, target.apiKey);
+                        const candidateKeys = (0, utils_1.getApiKeyCandidates)(target);
+                        let reachable = false;
+                        let workingKey = target.apiKey;
+                        for (const key of candidateKeys) {
+                            reachable = await this.checkUrlReachable(target.checkUrl, key);
+                            if (reachable) {
+                                workingKey = key;
+                                break;
+                            }
+                        }
                         if (reachable) {
                             outputChannel?.appendLine(`[SimpleSignal] Auto-detected active server: ${target.name}`);
                             endpoints.push({
                                 name: target.name,
                                 baseUrl: target.baseUrl,
-                                apiKey: target.apiKey,
+                                apiKey: workingKey,
                                 protocol: target.protocol,
                                 enabled: true,
                                 models: [],
@@ -101,7 +111,7 @@ class ModelFetcher {
                 {
                     name: 'Lemonade Local Server',
                     baseUrl: 'http://127.0.0.1:9000/api/v1',
-                    apiKey: 'lemonade',
+                    apiKey: 'local-lemonade',
                     protocol: 'lemonade',
                     enabled: true,
                     models: [],
@@ -115,6 +125,10 @@ class ModelFetcher {
                 continue;
             }
             try {
+                // Automatically ensure active API key is resolved
+                if (!endpoint.apiKey || endpoint.apiKey === 'lemonade') {
+                    endpoint.apiKey = (0, utils_1.resolveEndpointApiKey)(endpoint);
+                }
                 outputChannel?.appendLine(`[SimpleSignal] Querying models from: ${endpoint.name} (${endpoint.baseUrl})...`);
                 const models = await this.fetchModelsForEndpoint(endpoint);
                 if (models.length > 0) {
@@ -159,23 +173,17 @@ class ModelFetcher {
     static async fetchModelsForEndpoint(endpoint) {
         const protocol = endpoint.protocol || 'openai';
         const baseUrl = endpoint.baseUrl.replace(/\/$/, '');
-        const headers = {
-            'User-Agent': 'VSCode-SimpleSignal/1.0',
-            ...(endpoint.customHeaders || {}),
-        };
-        if (endpoint.apiKey) {
-            if (protocol === 'anthropic') {
-                headers['x-api-key'] = endpoint.apiKey;
-                headers['anthropic-version'] = '2023-06-01';
-            }
-            else {
-                headers['Authorization'] = `Bearer ${endpoint.apiKey}`;
-            }
-        }
+        const candidateKeys = (0, utils_1.getApiKeyCandidates)(endpoint);
+        if (candidateKeys.length === 0)
+            candidateKeys.push('');
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 8000);
         try {
             if (protocol === 'ollama') {
+                const headers = {
+                    'User-Agent': 'VSCode-SimpleSignal/1.0',
+                    ...(endpoint.customHeaders || {}),
+                };
                 const url = baseUrl.includes('/api/tags') ? baseUrl : `${baseUrl}/api/tags`;
                 const res = await fetch(url, { headers, signal: controller.signal });
                 clearTimeout(timeout);
@@ -199,7 +207,8 @@ class ModelFetcher {
                 });
             }
             if (protocol === 'gemini') {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${endpoint.apiKey || ''}`;
+                const key = candidateKeys[0] || endpoint.apiKey || '';
+                const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`;
                 const res = await fetch(url, { signal: controller.signal });
                 clearTimeout(timeout);
                 if (!res.ok) {
@@ -229,10 +238,34 @@ class ModelFetcher {
             else if (!baseUrl.endsWith('/models')) {
                 modelsUrl = `${baseUrl}/models`;
             }
-            const res = await fetch(modelsUrl, { headers, signal: controller.signal });
+            let res;
+            let lastErrText = '';
+            for (const apiKey of candidateKeys) {
+                const headers = {
+                    'User-Agent': 'VSCode-SimpleSignal/1.0',
+                    ...(endpoint.customHeaders || {}),
+                };
+                if (apiKey) {
+                    if (protocol === 'anthropic') {
+                        headers['x-api-key'] = apiKey;
+                        headers['anthropic-version'] = '2023-06-01';
+                    }
+                    else {
+                        headers['Authorization'] = `Bearer ${apiKey}`;
+                    }
+                }
+                const r = await fetch(modelsUrl, { headers, signal: controller.signal });
+                if (r.status === 401 && candidateKeys.length > 1 && apiKey !== candidateKeys[candidateKeys.length - 1]) {
+                    lastErrText = await r.text().catch(() => '');
+                    continue;
+                }
+                res = r;
+                break;
+            }
             clearTimeout(timeout);
-            if (!res.ok) {
-                throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+            if (!res || !res.ok) {
+                const errText = res ? await res.text().catch(() => '') : lastErrText;
+                throw new Error(`HTTP ${res?.status || 401}: ${res?.statusText || 'Unauthorized'} - ${errText}`);
             }
             const data = await res.json();
             const rawList = Array.isArray(data) ? data : data.data || data.models || [];

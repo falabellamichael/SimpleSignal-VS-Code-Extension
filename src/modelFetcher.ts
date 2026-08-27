@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { EndpointConfig, ModelConfig } from './types';
+import { getApiKeyCandidates, resolveEndpointApiKey } from './utils';
 
 interface ProbeTarget {
   name: string;
@@ -13,7 +14,7 @@ const LOCAL_PROBE_TARGETS: ProbeTarget[] = [
   {
     name: 'Lemonade Local Server',
     baseUrl: 'http://127.0.0.1:9000/api/v1',
-    apiKey: 'lemonade',
+    apiKey: 'local-lemonade',
     protocol: 'lemonade',
     checkUrl: 'http://127.0.0.1:9000/api/v1/models',
   },
@@ -61,13 +62,22 @@ export class ModelFetcher {
 
         if (!alreadyExists) {
           try {
-            const reachable = await this.checkUrlReachable(target.checkUrl, target.apiKey);
+            const candidateKeys = getApiKeyCandidates(target as any);
+            let reachable = false;
+            let workingKey = target.apiKey;
+            for (const key of candidateKeys) {
+              reachable = await this.checkUrlReachable(target.checkUrl, key);
+              if (reachable) {
+                workingKey = key;
+                break;
+              }
+            }
             if (reachable) {
               outputChannel?.appendLine(`[SimpleSignal] Auto-detected active server: ${target.name}`);
               endpoints.push({
                 name: target.name,
                 baseUrl: target.baseUrl,
-                apiKey: target.apiKey,
+                apiKey: workingKey,
                 protocol: target.protocol,
                 enabled: true,
                 models: [],
@@ -85,7 +95,7 @@ export class ModelFetcher {
         {
           name: 'Lemonade Local Server',
           baseUrl: 'http://127.0.0.1:9000/api/v1',
-          apiKey: 'lemonade',
+          apiKey: 'local-lemonade',
           protocol: 'lemonade',
           enabled: true,
           models: [],
@@ -102,6 +112,11 @@ export class ModelFetcher {
       }
 
       try {
+        // Automatically ensure active API key is resolved
+        if (!endpoint.apiKey || endpoint.apiKey === 'lemonade') {
+          endpoint.apiKey = resolveEndpointApiKey(endpoint);
+        }
+
         outputChannel?.appendLine(`[SimpleSignal] Querying models from: ${endpoint.name} (${endpoint.baseUrl})...`);
         const models = await this.fetchModelsForEndpoint(endpoint);
         if (models.length > 0) {
@@ -147,25 +162,18 @@ export class ModelFetcher {
   public static async fetchModelsForEndpoint(endpoint: EndpointConfig): Promise<ModelConfig[]> {
     const protocol = endpoint.protocol || 'openai';
     const baseUrl = endpoint.baseUrl.replace(/\/$/, '');
-    const headers: Record<string, string> = {
-      'User-Agent': 'VSCode-SimpleSignal/1.0',
-      ...(endpoint.customHeaders || {}),
-    };
-
-    if (endpoint.apiKey) {
-      if (protocol === 'anthropic') {
-        headers['x-api-key'] = endpoint.apiKey;
-        headers['anthropic-version'] = '2023-06-01';
-      } else {
-        headers['Authorization'] = `Bearer ${endpoint.apiKey}`;
-      }
-    }
+    const candidateKeys = getApiKeyCandidates(endpoint);
+    if (candidateKeys.length === 0) candidateKeys.push('');
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
     try {
       if (protocol === 'ollama') {
+        const headers: Record<string, string> = {
+          'User-Agent': 'VSCode-SimpleSignal/1.0',
+          ...(endpoint.customHeaders || {}),
+        };
         const url = baseUrl.includes('/api/tags') ? baseUrl : `${baseUrl}/api/tags`;
         const res = await fetch(url, { headers, signal: controller.signal });
         clearTimeout(timeout);
@@ -190,7 +198,8 @@ export class ModelFetcher {
       }
 
       if (protocol === 'gemini') {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${endpoint.apiKey || ''}`;
+        const key = candidateKeys[0] || endpoint.apiKey || '';
+        const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`;
         const res = await fetch(url, { signal: controller.signal });
         clearTimeout(timeout);
         if (!res.ok) {
@@ -223,11 +232,39 @@ export class ModelFetcher {
         modelsUrl = `${baseUrl}/models`;
       }
 
-      const res = await fetch(modelsUrl, { headers, signal: controller.signal });
+      let res: Response | undefined;
+      let lastErrText = '';
+
+      for (const apiKey of candidateKeys) {
+        const headers: Record<string, string> = {
+          'User-Agent': 'VSCode-SimpleSignal/1.0',
+          ...(endpoint.customHeaders || {}),
+        };
+
+        if (apiKey) {
+          if (protocol === 'anthropic') {
+            headers['x-api-key'] = apiKey;
+            headers['anthropic-version'] = '2023-06-01';
+          } else {
+            headers['Authorization'] = `Bearer ${apiKey}`;
+          }
+        }
+
+        const r = await fetch(modelsUrl, { headers, signal: controller.signal });
+        if (r.status === 401 && candidateKeys.length > 1 && apiKey !== candidateKeys[candidateKeys.length - 1]) {
+          lastErrText = await r.text().catch(() => '');
+          continue;
+        }
+
+        res = r;
+        break;
+      }
+
       clearTimeout(timeout);
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      if (!res || !res.ok) {
+        const errText = res ? await res.text().catch(() => '') : lastErrText;
+        throw new Error(`HTTP ${res?.status || 401}: ${res?.statusText || 'Unauthorized'} - ${errText}`);
       }
 
       const data: any = await res.json();

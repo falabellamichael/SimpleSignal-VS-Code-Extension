@@ -2,6 +2,7 @@ import * as http from 'http';
 import * as https from 'https';
 import { EndpointConfig, BenchmarkPreset, BenchmarkResult } from './types';
 import { ModelTelemetryTracker } from './telemetryTracker';
+import { resolveEndpointApiKey } from './utils';
 
 export class BenchmarkEngine {
   public static readonly PRESETS: BenchmarkPreset[] = [
@@ -146,8 +147,9 @@ export class BenchmarkEngine {
       ...(endpoint.customHeaders || {}),
     };
 
-    if (endpoint.apiKey) {
-      headers['Authorization'] = `Bearer ${endpoint.apiKey}`;
+    const apiKey = resolveEndpointApiKey(endpoint);
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
     const startTime = Date.now();
