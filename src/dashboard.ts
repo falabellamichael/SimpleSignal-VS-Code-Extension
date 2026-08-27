@@ -751,13 +751,13 @@ export class SimpleSignalDashboard {
 
   <!-- Navigation Tabs -->
   <div class="tabs-nav">
-    <button class="tab-btn active" onclick="switchTab('tab-endpoints')">
+    <button class="tab-btn active" id="btn-tab-endpoints" onclick="switchTab('tab-endpoints', this)">
       📡 Signal Endpoints & Models
     </button>
-    <button class="tab-btn" onclick="switchTab('tab-benchmarks')">
+    <button class="tab-btn" id="btn-tab-benchmarks" onclick="switchTab('tab-benchmarks', this)">
       ⚡ Performance
     </button>
-    <button class="tab-btn" onclick="switchTab('tab-telemetry')">
+    <button class="tab-btn" id="btn-tab-telemetry" onclick="switchTab('tab-telemetry', this)">
       📊 Hardware Telemetry
     </button>
   </div>
@@ -975,14 +975,32 @@ export class SimpleSignalDashboard {
     let benchmarkStartTime = 0;
     let benchmarkTimer = null;
 
-    function switchTab(tabId) {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-      event.currentTarget.classList.add('active');
-      document.getElementById(tabId).classList.add('active');
+    function switchTab(tabId, btn) {
+      try {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => {
+          c.classList.remove('active');
+          c.style.display = 'none';
+        });
 
-      if (tabId === 'tab-telemetry' || tabId === 'tab-benchmarks') {
-        refreshTelemetry();
+        if (btn) {
+          btn.classList.add('active');
+        } else {
+          const autoBtn = document.getElementById('btn-' + tabId);
+          if (autoBtn) autoBtn.classList.add('active');
+        }
+
+        const target = document.getElementById(tabId);
+        if (target) {
+          target.classList.add('active');
+          target.style.display = 'block';
+        }
+
+        if (tabId === 'tab-telemetry' || tabId === 'tab-benchmarks') {
+          refreshTelemetry();
+        }
+      } catch (err) {
+        console.error('switchTab error:', err);
       }
     }
 
