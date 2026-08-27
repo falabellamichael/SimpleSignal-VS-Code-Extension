@@ -538,12 +538,56 @@ class SimpleSignalDashboard {
       margin-bottom: 10px;
     }
 
+    .accordion-toggle {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 8px;
+      user-select: none;
+      transition: all 0.2s ease;
+    }
+
+    .accordion-toggle:hover {
+      background: rgba(255, 230, 0, 0.08);
+      border-color: var(--neon-accent);
+    }
+
+    .accordion-arrow {
+      display: inline-block;
+      transition: transform 0.2s ease;
+      font-size: 10px;
+      color: var(--neon-accent);
+    }
+
+    .accordion-toggle.collapsed .accordion-arrow {
+      transform: rotate(-90deg);
+    }
+
+    .model-list-wrapper {
+      transition: max-height 0.3s ease, opacity 0.2s ease;
+      max-height: 500px;
+      overflow: hidden;
+    }
+
+    .model-list-wrapper.collapsed {
+      max-height: 0 !important;
+      opacity: 0;
+      pointer-events: none;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
     .model-list {
-      max-height: 160px;
+      max-height: 200px;
       overflow-y: auto;
       border-top: 1px solid var(--card-border);
       padding-top: 8px;
-      margin-top: 8px;
+      margin-top: 6px;
     }
 
     .model-item {
@@ -555,6 +599,11 @@ class SimpleSignalDashboard {
       font-size: 11px;
       margin-bottom: 3px;
       background: rgba(255, 255, 255, 0.02);
+      transition: background 0.15s ease;
+    }
+
+    .model-item:hover {
+      background: rgba(255, 255, 255, 0.07);
     }
 
     .badge {
@@ -979,7 +1028,18 @@ class SimpleSignalDashboard {
         <svg height="13" width="13" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: -1px; margin-right: 4px;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
         GitHub
       </button>
-      <input type="text" class="search-box" id="searchInput" placeholder="🔍 Filter models across all endpoints..." />
+      
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <label style="font-size: 11px; font-weight: 700; color: var(--neon-accent); text-transform: uppercase;">Provider:</label>
+        <select class="select-box" id="providerFilterSelect" style="font-weight: 600;">
+          <option value="all">⚡ All Providers (${endpoints.length})</option>
+          ${endpoints.map((ep) => `<option value="${ep.name.toLowerCase()}">${ep.name} (${ep.models?.length || 0})</option>`).join('')}
+        </select>
+      </div>
+
+      <button class="btn btn-secondary" id="btnExpandAllModels" title="Expand all provider model dropdowns">📂 Expand All</button>
+      <button class="btn btn-secondary" id="btnCollapseAllModels" title="Collapse all provider model dropdowns">📁 Collapse All</button>
+      <input type="text" class="search-box" id="searchInput" placeholder="🔍 Search models..." style="flex: 1; min-width: 180px;" />
     </div>
 
     <div class="grid" id="endpointsGrid">
@@ -988,31 +1048,44 @@ class SimpleSignalDashboard {
             const isEnabled = ep.enabled !== false;
             const models = ep.models || [];
             return `
-        <div class="card" data-name="${ep.name.toLowerCase()}">
+        <div class="card" data-name="${ep.name.toLowerCase()}" data-endpoint-name="${ep.name.toLowerCase()}">
           <div class="card-header">
             <h3 class="card-title">
               <span class="status-dot ${isEnabled ? '' : 'disabled'}"></span>
               ${ep.name}
             </h3>
-            <span class="badge">${ep.protocol || 'openai'}</span>
+            <span class="badge ${ep.protocol === 'lemonade' ? 'badge-neon' : ep.protocol === 'ollama' ? 'badge-cyan' : ''}">${ep.protocol || 'openai'}</span>
           </div>
           <div class="card-url">${ep.baseUrl}</div>
-          <div class="model-list">
-            ${models.length > 0
+          
+          <div class="accordion-toggle" title="Click to expand/collapse models dropdown">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="accordion-arrow">▼</span>
+              <span style="font-weight: 600; font-size: 12px;">Models Dropdown</span>
+            </div>
+            <span class="badge ${isEnabled && models.length > 0 ? 'badge-neon' : ''}" style="font-size: 10px;">${models.length} loaded</span>
+          </div>
+
+          <div class="model-list-wrapper">
+            <div class="model-list">
+              ${models.length > 0
                 ? models
                     .map((m) => `
-              <div class="model-item" data-model="${m.id.toLowerCase()}">
-                <span style="font-family: monospace;">${m.id}</span>
-                <div>
-                  ${m.supportsVision ? '<span class="badge">👁️</span>' : ''}
-                  ${m.supportsTools ? '<span class="badge">🛠️</span>' : ''}
-                </div>
-              </div>`)
+                <div class="model-item" data-model="${m.id.toLowerCase()}">
+                  <span style="font-family: monospace; font-size: 11px;">${m.id}</span>
+                  <div style="display: flex; align-items: center; gap: 4px;">
+                    ${m.supportsVision ? '<span class="badge" title="Vision Capable">👁️</span>' : ''}
+                    ${m.supportsTools ? '<span class="badge" title="Function Calling / Tools">🛠️</span>' : ''}
+                    <button class="card-btn" style="padding: 2px 6px; font-size: 9px;" onclick="window.selectModelForBench('${ep.name}', '${m.id}')" title="Test this model">⚡ Test</button>
+                  </div>
+                </div>`)
                     .join('')
-                : '<div style="color: var(--muted-text); font-size: 12px;">No models fetched yet. Click "Auto-Fetch".</div>'}
+                : '<div style="color: var(--muted-text); font-size: 12px; padding: 6px;">No models fetched yet. Click "Auto-Fetch".</div>'}
+            </div>
           </div>
+
           <div class="card-footer">
-            <button class="card-btn" data-action="test" data-endpoint="${ep.name}">🧪 Test</button>
+            <button class="card-btn" data-action="test" data-endpoint="${ep.name}">🧪 Test Signal</button>
             <button class="card-btn" data-action="toggle" data-endpoint="${ep.name}">${isEnabled ? 'Disable' : 'Enable'}</button>
           </div>
         </div>`;
@@ -1089,16 +1162,28 @@ class SimpleSignalDashboard {
         <h3 style="margin-top: 0; color: var(--neon-accent); font-size: 15px;">⚡ Model Speed Test Setup</h3>
         
         <div class="benchmark-form-group">
-          <label>Target Model & Endpoint</label>
+          <label>1. Filter by Provider</label>
+          <select id="benchProviderSelect" class="select-box" style="width: 100%;">
+            <option value="all">⚡ All Providers (${endpoints.length})</option>
+            ${endpoints.map((ep) => `<option value="${ep.name}">${ep.name} (${ep.models?.length || 0} models)</option>`).join('')}
+          </select>
+        </div>
+
+        <div class="benchmark-form-group">
+          <label>2. Select Target Model</label>
           <select id="benchModelSelect" class="select-box" style="width: 100%;">
-            ${allModelsList
-            .map((m) => `<option value="${m.epName}|${m.modelId}">${m.modelId} [${m.epName}]</option>`)
+            ${endpoints
+            .filter((ep) => ep.enabled !== false && (ep.models?.length || 0) > 0)
+            .map((ep) => `
+              <optgroup label="${ep.name} (${ep.models?.length || 0} models)" data-provider="${ep.name}">
+                ${(ep.models || []).map((m) => `<option value="${ep.name}|${m.id}">${m.id} [${ep.name}]</option>`).join('')}
+              </optgroup>`)
             .join('')}
           </select>
         </div>
 
         <div class="benchmark-form-group">
-          <label>Performance Preset</label>
+          <label>3. Performance Preset</label>
           <select id="benchPresetSelect" class="select-box" style="width: 100%;">
             <option value="quick_speed">🚀 Quick Speed (64 Tokens)</option>
             <option value="code_gen">🎮 Lua 200-Line Sudoku Game (900 Tokens)</option>
@@ -1359,6 +1444,90 @@ Waiting to run performance test...
         const btnCheckModels = document.getElementById('btnCheckModels');
         if (btnCheckModels) btnCheckModels.addEventListener('click', function() { post('checkModels'); });
 
+        // Provider dropdown filter in Tab 1
+        const providerFilterSelect = document.getElementById('providerFilterSelect');
+        if (providerFilterSelect) {
+          providerFilterSelect.addEventListener('change', function() {
+            const query = (document.getElementById('searchInput')?.value || '').toLowerCase();
+            filterModels(query);
+          });
+        }
+
+        // Expand All / Collapse All buttons
+        const btnExpandAll = document.getElementById('btnExpandAllModels');
+        if (btnExpandAll) {
+          btnExpandAll.addEventListener('click', function() {
+            document.querySelectorAll('.accordion-toggle').forEach(function(t) {
+              t.classList.remove('collapsed');
+            });
+            document.querySelectorAll('.model-list-wrapper').forEach(function(w) {
+              w.classList.remove('collapsed');
+            });
+          });
+        }
+
+        const btnCollapseAll = document.getElementById('btnCollapseAllModels');
+        if (btnCollapseAll) {
+          btnCollapseAll.addEventListener('click', function() {
+            document.querySelectorAll('.accordion-toggle').forEach(function(t) {
+              t.classList.add('collapsed');
+            });
+            document.querySelectorAll('.model-list-wrapper').forEach(function(w) {
+              w.classList.add('collapsed');
+            });
+          });
+        }
+
+        // Accordion toggle click handlers
+        document.querySelectorAll('.accordion-toggle').forEach(function(toggle) {
+          toggle.addEventListener('click', function() {
+            const card = this.closest('.card');
+            const wrapper = card?.querySelector('.model-list-wrapper');
+            this.classList.toggle('collapsed');
+            if (wrapper) wrapper.classList.toggle('collapsed');
+          });
+        });
+
+        // Provider dropdown in Tab 2 (Performance Benchmark)
+        const benchProviderSelect = document.getElementById('benchProviderSelect');
+        const benchModelSelect = document.getElementById('benchModelSelect');
+        if (benchProviderSelect && benchModelSelect) {
+          benchProviderSelect.addEventListener('change', function() {
+            const selectedProvider = this.value;
+            const optgroups = benchModelSelect.querySelectorAll('optgroup');
+            let firstVisibleOption = null;
+            optgroups.forEach(function(group) {
+              const prov = group.getAttribute('data-provider');
+              if (selectedProvider === 'all' || prov === selectedProvider) {
+                group.style.display = '';
+                if (!firstVisibleOption) {
+                  const firstOpt = group.querySelector('option');
+                  if (firstOpt) firstVisibleOption = firstOpt;
+                }
+              } else {
+                group.style.display = 'none';
+              }
+            });
+            if (firstVisibleOption) {
+              benchModelSelect.value = firstVisibleOption.value;
+            }
+          });
+        }
+
+        // Global function to quick-select model for benchmark
+        window.selectModelForBench = function(epName, modelId) {
+          switchTab('tab-benchmarks');
+          if (benchProviderSelect) {
+            benchProviderSelect.value = epName;
+            benchProviderSelect.dispatchEvent(new Event('change'));
+          }
+          if (benchModelSelect) {
+            benchModelSelect.value = epName + '|' + modelId;
+          }
+          const benchCard = document.querySelector('.benchmark-card');
+          if (benchCard) benchCard.scrollIntoView({ behavior: 'smooth' });
+        };
+
         // Search filter
         const searchInput = document.getElementById('searchInput');
         if (searchInput) {
@@ -1415,7 +1584,17 @@ Waiting to run performance test...
 
       function filterModels(query) {
         const q = (query || '').toLowerCase();
+        const providerFilter = (document.getElementById('providerFilterSelect')?.value || 'all').toLowerCase();
+
         document.querySelectorAll('.card').forEach(function(card) {
+          const cardName = (card.getAttribute('data-endpoint-name') || card.getAttribute('data-name') || '').toLowerCase();
+          const matchesProvider = providerFilter === 'all' || cardName === providerFilter;
+
+          if (!matchesProvider) {
+            card.style.display = 'none';
+            return;
+          }
+
           const items = card.querySelectorAll('.model-item');
           let anyVisible = false;
           items.forEach(function(item) {
@@ -1427,9 +1606,16 @@ Waiting to run performance test...
               item.style.display = 'none';
             }
           });
-          const cardName = (card.getAttribute('data-name') || '').toLowerCase();
+
           if (!q || anyVisible || cardName.indexOf(q) !== -1) {
             card.style.display = 'block';
+            // Auto-expand card if user searched specifically
+            if (q && anyVisible) {
+              const toggle = card.querySelector('.accordion-toggle');
+              const wrapper = card.querySelector('.model-list-wrapper');
+              if (toggle) toggle.classList.remove('collapsed');
+              if (wrapper) wrapper.classList.remove('collapsed');
+            }
           } else {
             card.style.display = 'none';
           }

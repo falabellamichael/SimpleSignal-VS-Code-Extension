@@ -81,20 +81,23 @@ class SimpleSignalTreeDataProvider {
             return models.map((m) => this.createModelNode(m, ep.name));
         }
         if (element.contextValue === 'category_models') {
-            const allModels = [];
-            for (const ep of endpoints) {
-                if (ep.enabled === false)
-                    continue;
-                for (const m of ep.models || []) {
-                    allModels.push({ model: m, epName: ep.name });
-                }
-            }
-            if (allModels.length === 0) {
+            const activeEndpoints = endpoints.filter((ep) => ep.enabled !== false && (ep.models?.length || 0) > 0);
+            if (activeEndpoints.length === 0) {
                 return [
                     new TreeItemNode('No models available. Click "Auto-Fetch Models" below.', vscode.TreeItemCollapsibleState.None, 'empty', new vscode.ThemeIcon('info')),
                 ];
             }
-            return allModels.map(({ model, epName }) => this.createModelNode(model, epName));
+            return activeEndpoints.map((ep) => {
+                const node = new TreeItemNode(`${ep.name} (${ep.models?.length || 0})`, vscode.TreeItemCollapsibleState.Collapsed, 'provider_models_group', new vscode.ThemeIcon('server-process', new vscode.ThemeColor('charts.blue')));
+                node.description = `${ep.models?.length || 0} models`;
+                node.endpoint = ep;
+                return node;
+            });
+        }
+        if (element.contextValue === 'provider_models_group') {
+            const ep = element.endpoint;
+            const models = ep.models || [];
+            return models.map((m) => this.createModelNode(m, ep.name));
         }
         if (element.contextValue === 'category_actions') {
             const autoFetchAction = new TreeItemNode('Auto-Fetch All Models & Fill JSON', vscode.TreeItemCollapsibleState.None, 'action', new vscode.ThemeIcon('sync', new vscode.ThemeColor('charts.purple')));

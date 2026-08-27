@@ -84,21 +84,31 @@ export class SimpleSignalTreeDataProvider implements vscode.TreeDataProvider<Tre
     }
 
     if (element.contextValue === 'category_models') {
-      const allModels: { model: ModelConfig; epName: string }[] = [];
-      for (const ep of endpoints) {
-        if (ep.enabled === false) continue;
-        for (const m of ep.models || []) {
-          allModels.push({ model: m, epName: ep.name });
-        }
-      }
+      const activeEndpoints = endpoints.filter((ep) => ep.enabled !== false && (ep.models?.length || 0) > 0);
 
-      if (allModels.length === 0) {
+      if (activeEndpoints.length === 0) {
         return [
           new TreeItemNode('No models available. Click "Auto-Fetch Models" below.', vscode.TreeItemCollapsibleState.None, 'empty', new vscode.ThemeIcon('info')),
         ];
       }
 
-      return allModels.map(({ model, epName }) => this.createModelNode(model, epName));
+      return activeEndpoints.map((ep) => {
+        const node = new TreeItemNode(
+          `${ep.name} (${ep.models?.length || 0})`,
+          vscode.TreeItemCollapsibleState.Collapsed,
+          'provider_models_group',
+          new vscode.ThemeIcon('server-process', new vscode.ThemeColor('charts.blue'))
+        );
+        node.description = `${ep.models?.length || 0} models`;
+        (node as any).endpoint = ep;
+        return node;
+      });
+    }
+
+    if (element.contextValue === 'provider_models_group') {
+      const ep: EndpointConfig = (element as any).endpoint;
+      const models = ep.models || [];
+      return models.map((m) => this.createModelNode(m, ep.name));
     }
 
     if (element.contextValue === 'category_actions') {
