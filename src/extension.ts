@@ -6,6 +6,7 @@ import { SimpleSignalDashboard } from './dashboard';
 import { SystemDiagnostics } from './systemDiagnostics';
 import { BenchmarkEngine } from './benchmarkEngine';
 import { EndpointConfig, ProcessMemoryInfo } from './types';
+import { ModelTelemetryTracker } from './telemetryTracker';
 
 export function activate(context: vscode.ExtensionContext) {
   const outputChannel = vscode.window.createOutputChannel('SimpleSignal');
@@ -31,6 +32,24 @@ export function activate(context: vscode.ExtensionContext) {
   statusBarItem.tooltip = 'SimpleSignal: Click to manage AI models & endpoints';
   context.subscriptions.push(statusBarItem);
   updateStatusBar(statusBarItem);
+
+  let resetStatusBarTimer: any = null;
+  // Subscribe to live model telemetry for real-time status bar updates
+  context.subscriptions.push(
+    ModelTelemetryTracker.onTelemetryEvent((event) => {
+      const s = event.stats;
+      clearTimeout(resetStatusBarTimer);
+      if (event.type === 'chunk' || event.type === 'start') {
+        statusBarItem.text = `$(zap) ${s.modelName || s.modelId}: ${s.tokensPerSec.toFixed(1)} tok/s`;
+      } else if (event.type === 'complete') {
+        statusBarItem.text = `$(sparkle) ${s.modelName || s.modelId}: ${s.tokensPerSec.toFixed(1)} tok/s (${s.tokensGenerated} tok in ${(s.totalDurationMs / 1000).toFixed(1)}s)`;
+        resetStatusBarTimer = setTimeout(() => updateStatusBar(statusBarItem), 7000);
+      } else if (event.type === 'error') {
+        statusBarItem.text = `$(error) ${s.modelName || s.modelId}: Error`;
+        resetStatusBarTimer = setTimeout(() => updateStatusBar(statusBarItem), 5000);
+      }
+    })
+  );
 
   // Auto-fetch command
   const autoFetchCmd = vscode.commands.registerCommand('simplesignal.autoFetchModels', async () => {

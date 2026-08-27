@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { EndpointConfig } from './types';
 import { convertMessagesToOpenAI, convertToolsToOpenAI } from './utils';
+import { ModelTelemetryTracker } from './telemetryTracker';
 
 export class SimpleSignalChatProvider implements vscode.LanguageModelChatProvider<vscode.LanguageModelChatInformation> {
   private _onDidChange = new vscode.EventEmitter<void>();
@@ -96,6 +97,40 @@ export class SimpleSignalChatProvider implements vscode.LanguageModelChatProvide
 
     this.outputChannel.appendLine(`[SimpleSignal] Sending request to "${targetEndpoint.name}" for model "${actualModelId}"`);
 
+    // Extract prompt snippet and prompt token count
+    let promptSnippet = '';
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === vscode.LanguageModelChatMessageRole.User) {
+        for (const part of m.content ?? []) {
+          if (part instanceof vscode.LanguageModelTextPart) {
+            promptSnippet += part.value;
+          }
+        }
+        if (promptSnippet) break;
+      }
+    }
+    if (!promptSnippet && messages.length > 0) {
+      for (const part of messages[messages.length - 1].content ?? []) {
+        if (part instanceof vscode.LanguageModelTextPart) {
+          promptSnippet += part.value;
+        }
+      }
+    }
+
+    const estimatedPromptTokens = Math.max(1, Math.ceil(promptSnippet.length / 3.8));
+
+    // Initialize telemetry tracking session
+    const telemetrySession = ModelTelemetryTracker.startMessage({
+      modelId: actualModelId,
+      modelName: model.name || actualModelId,
+      endpointName: targetEndpoint.name,
+      protocol: targetEndpoint.protocol || 'openai',
+      source: 'vscode-chat',
+      promptPreview: promptSnippet.slice(0, 1500),
+      promptTokens: estimatedPromptTokens,
+    });
+
     const baseUrl = targetEndpoint.baseUrl.replace(/\/$/, '');
     let chatUrl = baseUrl;
     if (!chatUrl.endsWith('/chat/completions')) {
@@ -130,122 +165,139 @@ export class SimpleSignalChatProvider implements vscode.LanguageModelChatProvide
     token.onCancellationRequested(() => {
       abortController.abort();
       this.outputChannel.appendLine(`[SimpleSignal] Request cancelled.`);
+      ModelTelemetryTracker.failMessage(telemetrySession.id, 'Request cancelled by user or VS Code');
     });
 
-    const response = await fetch(chatUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: abortController.signal,
-    });
+    try {
+      const response = await fetch(chatUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: abortController.signal,
+      });
 
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      this.outputChannel.appendLine(`[SimpleSignal] HTTP Error ${response.status}: ${errText}`);
-      throw new Error(`SimpleSignal request failed: ${response.status} ${response.statusText} - ${errText}`);
-    }
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        this.outputChannel.appendLine(`[SimpleSignal] HTTP Error ${response.status}: ${errText}`);
+        const errMsg = `SimpleSignal request failed: ${response.status} ${response.statusText} - ${errText}`;
+        ModelTelemetryTracker.failMessage(telemetrySession.id, errMsg);
+        throw new Error(errMsg);
+      }
 
-    if (!response.body) {
-      throw new Error('[SimpleSignal] Response body is empty.');
-    }
+      if (!response.body) {
+        const errMsg = '[SimpleSignal] Response body is empty.';
+        ModelTelemetryTracker.failMessage(telemetrySession.id, errMsg);
+        throw new Error(errMsg);
+      }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buffer = '';
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
 
-    const pendingToolCalls = new Map<number, { id: string; name: string; args: string }>();
-    let inThinkingBlock = false;
+      const pendingToolCalls = new Map<number, { id: string; name: string; args: string }>();
+      let inThinkingBlock = false;
 
-    while (!token.isCancellationRequested) {
-      const { done, value } = await reader.read();
-      if (done) break;
+      while (!token.isCancellationRequested) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
-      for (const rawLine of lines) {
-        const line = rawLine.trim();
-        if (!line || line.startsWith(':')) continue;
-        if (line === 'data: [DONE]') break;
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (!line || line.startsWith(':')) continue;
+          if (line === 'data: [DONE]') break;
 
-        if (line.startsWith('data: ')) {
-          const jsonStr = line.slice(6);
-          try {
-            const data = JSON.parse(jsonStr);
-            const choice = data.choices?.[0];
-            if (!choice) continue;
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6);
+            try {
+              const data = JSON.parse(jsonStr);
+              const choice = data.choices?.[0];
+              if (!choice) continue;
 
-            const delta = choice.delta;
-            if (!delta) continue;
+              const delta = choice.delta;
+              if (!delta) continue;
 
-            if (delta.reasoning_content) {
-              if (!inThinkingBlock) {
-                progress.report(new vscode.LanguageModelTextPart('💭 *Thinking:*\n'));
-                inThinkingBlock = true;
-              }
-              progress.report(new vscode.LanguageModelTextPart(delta.reasoning_content));
-            }
-
-            if (delta.content) {
-              if (inThinkingBlock && !delta.reasoning_content) {
-                progress.report(new vscode.LanguageModelTextPart('\n\n---\n\n'));
-                inThinkingBlock = false;
-              }
-              progress.report(new vscode.LanguageModelTextPart(delta.content));
-            }
-
-            if (delta.tool_calls && Array.isArray(delta.tool_calls)) {
-              for (const tc of delta.tool_calls) {
-                const idx = tc.index ?? 0;
-                if (!pendingToolCalls.has(idx)) {
-                  pendingToolCalls.set(idx, {
-                    id: tc.id || `call_${Date.now()}_${idx}`,
-                    name: tc.function?.name || '',
-                    args: tc.function?.arguments || '',
-                  });
-                } else {
-                  const existing = pendingToolCalls.get(idx)!;
-                  if (tc.id) existing.id = tc.id;
-                  if (tc.function?.name) existing.name += tc.function.name;
-                  if (tc.function?.arguments) existing.args += tc.function.arguments;
+              if (delta.reasoning_content) {
+                if (!inThinkingBlock) {
+                  progress.report(new vscode.LanguageModelTextPart('💭 *Thinking:*\n'));
+                  inThinkingBlock = true;
                 }
+                progress.report(new vscode.LanguageModelTextPart(delta.reasoning_content));
+                ModelTelemetryTracker.updateChunk(telemetrySession.id, delta.reasoning_content, true);
               }
-            }
 
-            if (choice.finish_reason === 'tool_calls' || choice.finish_reason === 'stop') {
-              for (const [, tc] of pendingToolCalls) {
-                if (tc.name) {
-                  let parsedArgs: any = {};
-                  try {
-                    parsedArgs = JSON.parse(tc.args || '{}');
-                  } catch {
-                    parsedArgs = { raw: tc.args };
+              if (delta.content) {
+                if (inThinkingBlock && !delta.reasoning_content) {
+                  progress.report(new vscode.LanguageModelTextPart('\n\n---\n\n'));
+                  inThinkingBlock = false;
+                }
+                progress.report(new vscode.LanguageModelTextPart(delta.content));
+                ModelTelemetryTracker.updateChunk(telemetrySession.id, delta.content, false);
+              }
+
+              if (delta.tool_calls && Array.isArray(delta.tool_calls)) {
+                for (const tc of delta.tool_calls) {
+                  const idx = tc.index ?? 0;
+                  if (!pendingToolCalls.has(idx)) {
+                    pendingToolCalls.set(idx, {
+                      id: tc.id || `call_${Date.now()}_${idx}`,
+                      name: tc.function?.name || '',
+                      args: tc.function?.arguments || '',
+                    });
+                  } else {
+                    const existing = pendingToolCalls.get(idx)!;
+                    if (tc.id) existing.id = tc.id;
+                    if (tc.function?.name) existing.name += tc.function.name;
+                    if (tc.function?.arguments) existing.args += tc.function.arguments;
                   }
-                  progress.report(new vscode.LanguageModelToolCallPart(tc.id, tc.name, parsedArgs));
                 }
               }
-              pendingToolCalls.clear();
+
+              if (choice.finish_reason === 'tool_calls' || choice.finish_reason === 'stop') {
+                for (const [, tc] of pendingToolCalls) {
+                  if (tc.name) {
+                    let parsedArgs: any = {};
+                    try {
+                      parsedArgs = JSON.parse(tc.args || '{}');
+                    } catch {
+                      parsedArgs = { raw: tc.args };
+                    }
+                    progress.report(new vscode.LanguageModelToolCallPart(tc.id, tc.name, parsedArgs));
+                  }
+                }
+                pendingToolCalls.clear();
+              }
+            } catch {
+              // ignore
             }
-          } catch {
-            // ignore
           }
         }
       }
-    }
 
-    for (const [, tc] of pendingToolCalls) {
-      if (tc.name) {
-        let parsedArgs: any = {};
-        try {
-          parsedArgs = JSON.parse(tc.args || '{}');
-        } catch {
-          parsedArgs = { raw: tc.args };
+      for (const [, tc] of pendingToolCalls) {
+        if (tc.name) {
+          let parsedArgs: any = {};
+          try {
+            parsedArgs = JSON.parse(tc.args || '{}');
+          } catch {
+            parsedArgs = { raw: tc.args };
+          }
+          progress.report(new vscode.LanguageModelToolCallPart(tc.id, tc.name, parsedArgs));
         }
-        progress.report(new vscode.LanguageModelToolCallPart(tc.id, tc.name, parsedArgs));
       }
+
+      ModelTelemetryTracker.completeMessage(telemetrySession.id);
+    } catch (err: any) {
+      if (!token.isCancellationRequested) {
+        ModelTelemetryTracker.failMessage(telemetrySession.id, err.message || String(err));
+      }
+      throw err;
     }
   }
+
 
   public async provideTokenCount(
     _model: vscode.LanguageModelChatInformation,

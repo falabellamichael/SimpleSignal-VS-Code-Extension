@@ -1,6 +1,7 @@
 import * as http from 'http';
 import * as https from 'https';
 import { EndpointConfig, BenchmarkPreset, BenchmarkResult } from './types';
+import { ModelTelemetryTracker } from './telemetryTracker';
 
 export class BenchmarkEngine {
   public static readonly PRESETS: BenchmarkPreset[] = [
@@ -61,10 +62,47 @@ export class BenchmarkEngine {
 
     const protocol = endpoint.protocol || 'openai';
 
-    if (protocol === 'ollama') {
-      return this.runOllamaBenchmark(endpoint, modelId, preset.name, prompt, maxTokens, onProgress);
-    } else {
-      return this.runOpenAIBenchmark(endpoint, modelId, preset.name, prompt, maxTokens, onProgress);
+    const telemetrySession = ModelTelemetryTracker.startMessage({
+      modelId,
+      modelName: modelId,
+      endpointName: endpoint.name,
+      protocol: protocol,
+      source: 'benchmark',
+      promptPreview: prompt.slice(0, 1000),
+      promptTokens: Math.max(1, Math.ceil(prompt.length / 3.8)),
+    });
+
+    const wrappedProgress = (chunk: string, currentTokens: number, currentTPS: number) => {
+      ModelTelemetryTracker.updateChunk(telemetrySession.id, chunk, false);
+      if (onProgress) {
+        onProgress(chunk, currentTokens, currentTPS);
+      }
+    };
+
+    try {
+      let result: BenchmarkResult;
+      if (protocol === 'ollama') {
+        result = await this.runOllamaBenchmark(endpoint, modelId, preset.name, prompt, maxTokens, wrappedProgress);
+      } else {
+        result = await this.runOpenAIBenchmark(endpoint, modelId, preset.name, prompt, maxTokens, wrappedProgress);
+      }
+
+      if (result.status === 'success') {
+        ModelTelemetryTracker.completeMessage(telemetrySession.id, {
+          tokensGenerated: result.tokensGenerated,
+          tokensPerSec: result.tokensPerSec,
+          ttftMs: result.ttftMs,
+          totalDurationMs: result.totalDurationMs,
+          outputPreview: result.outputPreview,
+        });
+      } else {
+        ModelTelemetryTracker.failMessage(telemetrySession.id, result.errorMessage || 'Benchmark failed');
+      }
+
+      return result;
+    } catch (err: any) {
+      ModelTelemetryTracker.failMessage(telemetrySession.id, err.message || String(err));
+      throw err;
     }
   }
 

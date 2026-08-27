@@ -91,12 +91,38 @@ export interface BenchmarkResult {
   timestamp: number;
 }
 
+export interface LiveModelStats {
+  id: string;
+  modelId: string;
+  modelName?: string;
+  endpointName: string;
+  protocol: string;
+  source: 'vscode-chat' | 'benchmark' | 'inline-edit' | 'tool-call';
+  status: 'streaming' | 'completed' | 'error' | 'aborted' | 'idle';
+  startTime: number;
+  endTime?: number;
+  timestamp: number;
+  promptPreview: string;
+  outputPreview: string;
+  promptTokens: number;
+  tokensGenerated: number;
+  ttftMs: number;
+  generationDurationMs: number;
+  totalDurationMs: number;
+  tokensPerSec: number;
+  peakTPS: number;
+  isThinking?: boolean;
+  thinkingTokens?: number;
+  errorMessage?: string;
+}
+
 export interface TelemetrySnapshot {
   timestamp: number;
   ram: RAMDiagnostics;
   vram: VRAMDiagnostics;
   loadedModels: LoadedAIModel[];
   recentBenchmarks: BenchmarkResult[];
+  lastMessage?: LiveModelStats | null;
+  activeMessage?: LiveModelStats | null;
+  messageHistory?: LiveModelStats[];
 }
-
-

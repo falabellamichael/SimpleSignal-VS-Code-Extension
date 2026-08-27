@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.BenchmarkEngine = void 0;
 const http = __importStar(require("http"));
 const https = __importStar(require("https"));
+const telemetryTracker_1 = require("./telemetryTracker");
 class BenchmarkEngine {
     static PRESETS = [
         {
@@ -81,11 +82,46 @@ class BenchmarkEngine {
         const prompt = customPrompt || preset.prompt;
         const maxTokens = customMaxTokens || preset.maxTokens;
         const protocol = endpoint.protocol || 'openai';
-        if (protocol === 'ollama') {
-            return this.runOllamaBenchmark(endpoint, modelId, preset.name, prompt, maxTokens, onProgress);
+        const telemetrySession = telemetryTracker_1.ModelTelemetryTracker.startMessage({
+            modelId,
+            modelName: modelId,
+            endpointName: endpoint.name,
+            protocol: protocol,
+            source: 'benchmark',
+            promptPreview: prompt.slice(0, 1000),
+            promptTokens: Math.max(1, Math.ceil(prompt.length / 3.8)),
+        });
+        const wrappedProgress = (chunk, currentTokens, currentTPS) => {
+            telemetryTracker_1.ModelTelemetryTracker.updateChunk(telemetrySession.id, chunk, false);
+            if (onProgress) {
+                onProgress(chunk, currentTokens, currentTPS);
+            }
+        };
+        try {
+            let result;
+            if (protocol === 'ollama') {
+                result = await this.runOllamaBenchmark(endpoint, modelId, preset.name, prompt, maxTokens, wrappedProgress);
+            }
+            else {
+                result = await this.runOpenAIBenchmark(endpoint, modelId, preset.name, prompt, maxTokens, wrappedProgress);
+            }
+            if (result.status === 'success') {
+                telemetryTracker_1.ModelTelemetryTracker.completeMessage(telemetrySession.id, {
+                    tokensGenerated: result.tokensGenerated,
+                    tokensPerSec: result.tokensPerSec,
+                    ttftMs: result.ttftMs,
+                    totalDurationMs: result.totalDurationMs,
+                    outputPreview: result.outputPreview,
+                });
+            }
+            else {
+                telemetryTracker_1.ModelTelemetryTracker.failMessage(telemetrySession.id, result.errorMessage || 'Benchmark failed');
+            }
+            return result;
         }
-        else {
-            return this.runOpenAIBenchmark(endpoint, modelId, preset.name, prompt, maxTokens, onProgress);
+        catch (err) {
+            telemetryTracker_1.ModelTelemetryTracker.failMessage(telemetrySession.id, err.message || String(err));
+            throw err;
         }
     }
     /**

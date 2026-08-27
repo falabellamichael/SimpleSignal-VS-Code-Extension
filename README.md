@@ -47,18 +47,24 @@ Instead of switching between separate sidebar webviews (like Continue or Cline),
 - Native streaming support for reasoning models (`DeepSeek R1/V4`, `Qwen Thinking`, `o1/o3-mini`).
 - Renders thinking thoughts in distinct blocks before the final code response.
 
-### 4. ⚡ Benchmark Arena & Speed Testing
-- Interactive live speed benchmarking with streaming output.
-- Measures **Time-to-First-Token (TTFT)** in ms and **Tokens-Per-Second (TPS)** generation throughput.
-- Built-in test presets: Quick Speed Run (64 tokens), Luau & Code Synthesis (200 tokens), and Deep Reasoning Stress Test (350 tokens).
-- Dynamic **Leaderboard & Comparison Bar Charts** ranking model speeds.
+### 4. ⚡ Live Model Telemetry & Real-Time Performance HUD
+- **Real-Time Speedometer (TPS)**: Live Tokens-Per-Second streaming calculation and peak burst speed indicator.
+- **Time-to-First-Token (TTFT)**: Sub-second response latency gauge with speed ratings (`🚀 Ultra-Fast (<300ms)`, `⚡ Fast (<800ms)`).
+- **Split Message Inspector**: Side-by-side view showing the exact prompt/query sent by VS Code and the live streamed model output.
+- **Recent Model Messages Log**: Live history tracking every chat prompt or tool call from any model in VS Code with speed bars and latency metrics.
+- **Status Bar Live Widget**: Streams generation speed directly in the bottom-right corner of VS Code in real-time.
 
-### 5. 📊 Live Hardware & Memory Telemetry
+### 5. 🎮 Benchmark Arena & Speed Testing
+- Interactive speed benchmarking with streaming output.
+- Built-in test presets: Quick Speed Run (64 tokens), 200-Line Sudoku Game in Lua (900 tokens), and Complex Pathfinding Algorithm (400 tokens).
+- Dynamic **Leaderboard & Comparison Bar Charts** ranking model throughput.
+
+### 6. 📊 Live Hardware & Memory Telemetry
 - Real-time **GPU Dedicated VRAM** monitoring (AMD Radeon, NVIDIA, Intel).
 - Real-time **System RAM** usage and top memory consumer breakdown.
 - **Stray / Background AI Model Detection** (`llama-server`, `python`, `ollama`, `lmstudio`, `vllm`) with 1-click memory unloading.
 
-### 6. 🎨 Minimal Dark Neon Theme Integration
+### 7. 🎨 Minimal Dark Neon Theme Integration
 - Dynamically inherits your active VS Code theme tokens (`--vscode-focusBorder`, `--vscode-editor-background`).
 - Includes a dedicated **Activity Bar Sidebar Hub** and an interactive **Visual Hub Dashboard** with tabbed navigation.
 
