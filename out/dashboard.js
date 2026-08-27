@@ -54,7 +54,7 @@ class SimpleSignalDashboard {
         }
         const panel = vscode.window.createWebviewPanel('simplesignalDashboard', 'SimpleSignal Hub', column || vscode.ViewColumn.One, {
             enableScripts: true,
-            retainContextWhenHidden: true,
+            retainContextWhenHidden: false, // Ensure clean refresh when hidden/shown
         });
         SimpleSignalDashboard.currentPanel = new SimpleSignalDashboard(panel, extensionUri);
     }
@@ -64,48 +64,53 @@ class SimpleSignalDashboard {
         this._update();
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
         this._panel.webview.onDidReceiveMessage(async (message) => {
-            switch (message.command) {
-                case 'autoFetch':
-                    await vscode.commands.executeCommand('simplesignal.autoFetchModels');
-                    this._update();
-                    break;
-                case 'checkVRAM':
-                    await vscode.commands.executeCommand('simplesignal.checkVRAM');
-                    break;
-                case 'checkRAM':
-                    await vscode.commands.executeCommand('simplesignal.checkRAM');
-                    break;
-                case 'checkModels':
-                    await vscode.commands.executeCommand('simplesignal.checkLoadedModels');
-                    break;
-                case 'openGitHub':
-                    await vscode.env.openExternal(vscode.Uri.parse('https://github.com/falabellamichael/SimpleSignal-VS-Code-Extension'));
-                    break;
-                case 'openSettings':
-                    await vscode.commands.executeCommand('workbench.action.openSettingsJson');
-                    break;
-                case 'toggleEndpoint':
-                    await this.toggleEndpoint(message.name);
-                    break;
-                case 'testEndpoint':
-                    await this.testEndpoint(message.name);
-                    break;
-                case 'getTelemetry':
-                    await this.sendTelemetryData();
-                    break;
-                case 'runBenchmark':
-                    await this.handleRunBenchmark(message);
-                    break;
-                case 'runAllBenchmarks':
-                    await this.handleRunAllBenchmarks();
-                    break;
-                case 'unloadModel':
-                    await this.handleUnloadModel(message);
-                    break;
-                case 'clearBenchmarkHistory':
-                    benchmarkEngine_1.BenchmarkEngine.clearHistory();
-                    await this.sendTelemetryData();
-                    break;
+            try {
+                switch (message.command) {
+                    case 'autoFetch':
+                        await vscode.commands.executeCommand('simplesignal.autoFetchModels');
+                        this._update();
+                        break;
+                    case 'checkVRAM':
+                        await vscode.commands.executeCommand('simplesignal.checkVRAM');
+                        break;
+                    case 'checkRAM':
+                        await vscode.commands.executeCommand('simplesignal.checkRAM');
+                        break;
+                    case 'checkModels':
+                        await vscode.commands.executeCommand('simplesignal.checkLoadedModels');
+                        break;
+                    case 'openGitHub':
+                        await vscode.env.openExternal(vscode.Uri.parse('https://github.com/falabellamichael/SimpleSignal-VS-Code-Extension'));
+                        break;
+                    case 'openSettings':
+                        await vscode.commands.executeCommand('workbench.action.openSettingsJson');
+                        break;
+                    case 'toggleEndpoint':
+                        await this.toggleEndpoint(message.name);
+                        break;
+                    case 'testEndpoint':
+                        await this.testEndpoint(message.name);
+                        break;
+                    case 'getTelemetry':
+                        await this.sendTelemetryData();
+                        break;
+                    case 'runBenchmark':
+                        await this.handleRunBenchmark(message);
+                        break;
+                    case 'runAllBenchmarks':
+                        await this.handleRunAllBenchmarks();
+                        break;
+                    case 'unloadModel':
+                        await this.handleUnloadModel(message);
+                        break;
+                    case 'clearBenchmarkHistory':
+                        benchmarkEngine_1.BenchmarkEngine.clearHistory();
+                        await this.sendTelemetryData();
+                        break;
+                }
+            }
+            catch (err) {
+                vscode.window.showErrorMessage(`SimpleSignal Hub error: ${err.message || err}`);
             }
         }, null, this._disposables);
         vscode.workspace.onDidChangeConfiguration((e) => {
@@ -262,6 +267,7 @@ class SimpleSignalDashboard {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
   <title>SimpleSignal Hub</title>
   <style>
     :root {
@@ -357,7 +363,7 @@ class SimpleSignalDashboard {
       background: transparent;
       border: 1px solid transparent;
       color: var(--muted-text);
-      padding: 8px 16px;
+      padding: 9px 18px;
       font-size: 13px;
       font-weight: 600;
       border-radius: 6px;
@@ -366,17 +372,18 @@ class SimpleSignalDashboard {
       align-items: center;
       gap: 6px;
       transition: all 0.2s;
+      user-select: none;
     }
 
     .tab-btn:hover {
       color: var(--text-color);
-      background: rgba(255, 255, 255, 0.04);
+      background: rgba(255, 255, 255, 0.06);
     }
 
     .tab-btn.active {
-      background: rgba(255, 230, 0, 0.12);
-      border-color: var(--neon-accent);
-      color: var(--neon-accent);
+      background: rgba(255, 230, 0, 0.14) !important;
+      border: 1px solid var(--neon-accent) !important;
+      color: var(--neon-accent) !important;
       box-shadow: 0 0 10px var(--neon-glow);
     }
 
@@ -385,7 +392,7 @@ class SimpleSignalDashboard {
     }
 
     .tab-content.active {
-      display: block;
+      display: block !important;
     }
 
     .actions-bar {
@@ -409,6 +416,7 @@ class SimpleSignalDashboard {
       align-items: center;
       gap: 6px;
       transition: all 0.2s ease;
+      user-select: none;
     }
 
     .btn:hover {
@@ -750,13 +758,13 @@ class SimpleSignalDashboard {
 
   <!-- Navigation Tabs -->
   <div class="tabs-nav">
-    <button class="tab-btn active" id="btn-tab-endpoints" data-target="tab-endpoints" onclick="switchTab('tab-endpoints', this)">
+    <button class="tab-btn active" id="btn-tab-endpoints" data-tab="tab-endpoints">
       📡 Signal Endpoints & Models
     </button>
-    <button class="tab-btn" id="btn-tab-benchmarks" data-target="tab-benchmarks" onclick="switchTab('tab-benchmarks', this)">
+    <button class="tab-btn" id="btn-tab-benchmarks" data-tab="tab-benchmarks">
       ⚡ Performance
     </button>
-    <button class="tab-btn" id="btn-tab-telemetry" data-target="tab-telemetry" onclick="switchTab('tab-telemetry', this)">
+    <button class="tab-btn" id="btn-tab-telemetry" data-tab="tab-telemetry">
       📊 Hardware Telemetry
     </button>
   </div>
@@ -764,13 +772,13 @@ class SimpleSignalDashboard {
   <!-- TAB 1: ENDPOINTS & MODELS -->
   <div id="tab-endpoints" class="tab-content active">
     <div class="actions-bar">
-      <button class="btn" onclick="triggerAutoFetch()">⚡ Auto-Fetch & Fill JSON</button>
-      <button class="btn btn-secondary" onclick="openSettings()">⚙️ Settings JSON</button>
-      <button class="btn btn-secondary" onclick="openGitHub()">
+      <button class="btn" id="btnAutoFetch">⚡ Auto-Fetch & Fill JSON</button>
+      <button class="btn btn-secondary" id="btnSettings">⚙️ Settings JSON</button>
+      <button class="btn btn-secondary" id="btnGitHub">
         <svg height="13" width="13" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: -1px; margin-right: 4px;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
         GitHub
       </button>
-      <input type="text" class="search-box" id="searchInput" placeholder="🔍 Filter models..." onkeyup="filterModels()" />
+      <input type="text" class="search-box" id="searchInput" placeholder="🔍 Filter models across all endpoints..." />
     </div>
 
     <div class="grid" id="endpointsGrid">
@@ -803,8 +811,8 @@ class SimpleSignalDashboard {
                 : '<div style="color: var(--muted-text); font-size: 12px;">No models fetched yet. Click "Auto-Fetch".</div>'}
           </div>
           <div class="card-footer">
-            <button class="card-btn" onclick="testEndpoint('${ep.name}')">🧪 Test</button>
-            <button class="card-btn" onclick="toggleEndpoint('${ep.name}')">${isEnabled ? 'Disable' : 'Enable'}</button>
+            <button class="card-btn" data-action="test" data-endpoint="${ep.name}">🧪 Test</button>
+            <button class="card-btn" data-action="toggle" data-endpoint="${ep.name}">${isEnabled ? 'Disable' : 'Enable'}</button>
           </div>
         </div>`;
         })
@@ -838,10 +846,10 @@ class SimpleSignalDashboard {
         </div>
 
         <div style="display: flex; gap: 8px; margin-top: 16px;">
-          <button class="btn btn-primary-neon" style="flex: 1;" onclick="startBenchmark()">
+          <button class="btn btn-primary-neon" style="flex: 1;" id="btnRunBenchmark">
             ▶️ Run Performance Test
           </button>
-          <button class="btn btn-secondary" onclick="startBatchBenchmark()" title="Run speed test across all models">
+          <button class="btn btn-secondary" id="btnBatchBenchmark" title="Run speed test across all models">
             🔥 Test All Models
           </button>
         </div>
@@ -879,7 +887,7 @@ class SimpleSignalDashboard {
     <div class="table-container">
       <div style="padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--card-border);">
         <h3 style="margin: 0; font-size: 14px; color: var(--neon-accent);">🏆 Model Performance Leaderboard</h3>
-        <button class="card-btn" onclick="clearHistory()">Clear History</button>
+        <button class="card-btn" id="btnClearHistory">Clear History</button>
       </div>
       <table>
         <thead>
@@ -895,7 +903,7 @@ class SimpleSignalDashboard {
           </tr>
         </thead>
         <tbody id="leaderboardBody">
-          <tr><td colspan="8" style="text-align: center; color: var(--muted-text);">No benchmark runs recorded yet. Click "Run Benchmark" above!</td></tr>
+          <tr><td colspan="8" style="text-align: center; color: var(--muted-text);">No benchmark runs recorded yet. Click "Run Performance Test" above!</td></tr>
         </tbody>
       </table>
     </div>
@@ -904,10 +912,10 @@ class SimpleSignalDashboard {
   <!-- TAB 3: TELEMETRY & HARDWARE -->
   <div id="tab-telemetry" class="tab-content">
     <div class="actions-bar">
-      <button class="btn btn-primary-neon" onclick="refreshTelemetry()">🔄 Refresh Hardware Telemetry</button>
-      <button class="btn btn-secondary" onclick="checkVRAM()">🎮 Detailed VRAM</button>
-      <button class="btn btn-secondary" onclick="checkRAM()">💾 Detailed RAM</button>
-      <button class="btn btn-secondary" onclick="checkModels()">🤖 Stray Models</button>
+      <button class="btn btn-primary-neon" id="btnRefreshTelemetry">🔄 Refresh Hardware Telemetry</button>
+      <button class="btn btn-secondary" id="btnCheckVRAM">🎮 Detailed VRAM</button>
+      <button class="btn btn-secondary" id="btnCheckRAM">💾 Detailed RAM</button>
+      <button class="btn btn-secondary" id="btnCheckModels">🤖 Stray Models</button>
     </div>
 
     <div class="telemetry-grid">
@@ -915,7 +923,7 @@ class SimpleSignalDashboard {
       <div class="gauge-card">
         <div class="gauge-header">
           <span id="gpuNameDisplay">🎮 GPU Dedicated VRAM</span>
-          <span id="gpuUsageDisplay" style="color: var(--neon-accent);">0 MB</span>
+          <span id="gpuUsageDisplay" style="color: var(--neon-accent);">0 MB Used</span>
         </div>
         <div class="progress-bar-wrap">
           <div class="progress-bar-fill" id="vramBarFill" style="width: 0%;"></div>
@@ -966,248 +974,376 @@ class SimpleSignalDashboard {
   </div>
 
   <script>
-    const vscode = acquireVsCodeApi();
-    let benchmarkStartTime = 0;
-    let benchmarkTimer = null;
-
-    function switchTab(tabId, btn) {
+    (function() {
+      let vscode;
       try {
-        const allBtns = document.querySelectorAll('.tab-btn');
-        allBtns.forEach(b => b.classList.remove('active'));
-
-        const allTabs = document.querySelectorAll('.tab-content');
-        allTabs.forEach(c => {
-          c.classList.remove('active');
-          c.style.display = 'none';
-        });
-
-        if (btn) {
-          btn.classList.add('active');
-        } else {
-          const autoBtn = document.getElementById('btn-' + tabId);
-          if (autoBtn) autoBtn.classList.add('active');
-        }
-
-        const target = document.getElementById(tabId);
-        if (target) {
-          target.classList.add('active');
-          target.style.display = 'block';
-        }
-
-        if (tabId === 'tab-telemetry' || tabId === 'tab-benchmarks') {
-          refreshTelemetry();
-        }
-      } catch (err) {
-        console.error('switchTab error:', err);
+        vscode = acquireVsCodeApi();
+      } catch (e) {
+        console.error('VsCode API acquire error:', e);
       }
-    }
 
-    function initTabs() {
-      const tabButtons = document.querySelectorAll('.tab-btn');
-      tabButtons.forEach(btn => {
-        btn.addEventListener('click', function(e) {
-          e.preventDefault();
-          const target = this.getAttribute('data-target') || this.id.replace('btn-', '');
-          switchTab(target, this);
+      let benchmarkStartTime = 0;
+      let benchmarkTimer = null;
+
+      function post(cmd, data) {
+        if (vscode) {
+          vscode.postMessage(Object.assign({ command: cmd }, data || {}));
+        }
+      }
+
+      function switchTab(tabId) {
+        try {
+          const tabBtns = document.querySelectorAll('.tab-btn');
+          tabBtns.forEach(function(b) {
+            b.classList.remove('active');
+            if (b.getAttribute('data-tab') === tabId || b.id === 'btn-' + tabId) {
+              b.classList.add('active');
+            }
+          });
+
+          const tabContents = document.querySelectorAll('.tab-content');
+          tabContents.forEach(function(c) {
+            c.classList.remove('active');
+            c.style.display = 'none';
+          });
+
+          const targetEl = document.getElementById(tabId);
+          if (targetEl) {
+            targetEl.classList.add('active');
+            targetEl.style.display = 'block';
+          }
+
+          if (tabId === 'tab-telemetry' || tabId === 'tab-benchmarks') {
+            post('getTelemetry');
+          }
+        } catch (err) {
+          console.error('switchTab error:', err);
+        }
+      }
+
+      // Attach DOM Listeners
+      function initListeners() {
+        // Tab switching
+        document.querySelectorAll('.tab-btn').forEach(function(btn) {
+          btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const tabId = this.getAttribute('data-tab');
+            if (tabId) switchTab(tabId);
+          });
         });
-      });
-    }
 
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', initTabs);
-    } else {
-      initTabs();
-    }
+        // Main action buttons
+        const btnAutoFetch = document.getElementById('btnAutoFetch');
+        if (btnAutoFetch) btnAutoFetch.addEventListener('click', function() { post('autoFetch'); });
 
-    function triggerAutoFetch() { vscode.postMessage({ command: 'autoFetch' }); }
-    function openSettings() { vscode.postMessage({ command: 'openSettings' }); }
-    function openGitHub() { vscode.postMessage({ command: 'openGitHub' }); }
-    function checkVRAM() { vscode.postMessage({ command: 'checkVRAM' }); }
-    function checkRAM() { vscode.postMessage({ command: 'checkRAM' }); }
-    function checkModels() { vscode.postMessage({ command: 'checkModels' }); }
-    function toggleEndpoint(name) { vscode.postMessage({ command: 'toggleEndpoint', name }); }
-    function testEndpoint(name) { vscode.postMessage({ command: 'testEndpoint', name }); }
-    function clearHistory() { vscode.postMessage({ command: 'clearBenchmarkHistory' }); }
-    function refreshTelemetry() { vscode.postMessage({ command: 'getTelemetry' }); }
+        const btnSettings = document.getElementById('btnSettings');
+        if (btnSettings) btnSettings.addEventListener('click', function() { post('openSettings'); });
 
-    function startBenchmark() {
-      const selectVal = document.getElementById('benchModelSelect').value;
-      if (!selectVal) return;
-      const [epName, modelId] = selectVal.split('|');
-      const presetId = document.getElementById('benchPresetSelect').value;
+        const btnGitHub = document.getElementById('btnGitHub');
+        if (btnGitHub) btnGitHub.addEventListener('click', function() { post('openGitHub'); });
 
-      document.getElementById('streamOutput').innerText = 'Initializing stream benchmark...';
-      document.getElementById('meterTPS').innerText = '0.0';
-      document.getElementById('meterTTFT').innerText = '...';
-      document.getElementById('meterTokens').innerText = '0';
-      document.getElementById('meterDuration').innerText = '0.0s';
+        const btnRunBenchmark = document.getElementById('btnRunBenchmark');
+        if (btnRunBenchmark) btnRunBenchmark.addEventListener('click', startBenchmark);
 
-      benchmarkStartTime = Date.now();
-      clearInterval(benchmarkTimer);
-      benchmarkTimer = setInterval(() => {
-        const sec = ((Date.now() - benchmarkStartTime) / 1000).toFixed(1);
-        document.getElementById('meterDuration').innerText = sec + 's';
-      }, 100);
+        const btnBatchBenchmark = document.getElementById('btnBatchBenchmark');
+        if (btnBatchBenchmark) btnBatchBenchmark.addEventListener('click', startBatchBenchmark);
 
-      vscode.postMessage({
-        command: 'runBenchmark',
-        endpointName: epName,
-        modelId,
-        presetId,
-      });
-    }
+        const btnClearHistory = document.getElementById('btnClearHistory');
+        if (btnClearHistory) btnClearHistory.addEventListener('click', function() { post('clearBenchmarkHistory'); });
 
-    function startBatchBenchmark() {
-      document.getElementById('streamOutput').innerText = 'Starting batch benchmark for all models...';
-      vscode.postMessage({ command: 'runAllBenchmarks' });
-    }
+        const btnRefreshTelemetry = document.getElementById('btnRefreshTelemetry');
+        if (btnRefreshTelemetry) btnRefreshTelemetry.addEventListener('click', function() { post('getTelemetry'); });
 
-    function unloadStrayModel(source, modelName, pid) {
-      vscode.postMessage({ command: 'unloadModel', source, modelName, pid });
-    }
+        const btnCheckVRAM = document.getElementById('btnCheckVRAM');
+        if (btnCheckVRAM) btnCheckVRAM.addEventListener('click', function() { post('checkVRAM'); });
 
-    function filterModels() {
-      const q = document.getElementById('searchInput').value.toLowerCase();
-      const cards = document.querySelectorAll('.card');
-      cards.forEach(card => {
-        const items = card.querySelectorAll('.model-item');
-        let anyVisible = false;
-        items.forEach(item => {
-          const text = item.getAttribute('data-model') || '';
-          if (text.includes(q) || !q) {
-            item.style.display = 'flex';
-            anyVisible = true;
+        const btnCheckRAM = document.getElementById('btnCheckRAM');
+        if (btnCheckRAM) btnCheckRAM.addEventListener('click', function() { post('checkRAM'); });
+
+        const btnCheckModels = document.getElementById('btnCheckModels');
+        if (btnCheckModels) btnCheckModels.addEventListener('click', function() { post('checkModels'); });
+
+        // Search filter
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+          searchInput.addEventListener('input', function() {
+            filterModels(this.value);
+          });
+        }
+
+        // Endpoint card buttons (test / toggle)
+        document.querySelectorAll('.card-btn').forEach(function(btn) {
+          btn.addEventListener('click', function(e) {
+            const action = this.getAttribute('data-action');
+            const ep = this.getAttribute('data-endpoint');
+            if (action === 'test' && ep) {
+              post('testEndpoint', { name: ep });
+            } else if (action === 'toggle' && ep) {
+              post('toggleEndpoint', { name: ep });
+            }
+          });
+        });
+      }
+
+      function startBenchmark() {
+        const sel = document.getElementById('benchModelSelect');
+        if (!sel || !sel.value) return;
+        const parts = sel.value.split('|');
+        const epName = parts[0];
+        const modelId = parts[1];
+
+        const presetSel = document.getElementById('benchPresetSelect');
+        const presetId = presetSel ? presetSel.value : 'quick_speed';
+
+        const outBox = document.getElementById('streamOutput');
+        if (outBox) outBox.innerText = 'Initializing stream benchmark...';
+
+        const tpsEl = document.getElementById('meterTPS');
+        if (tpsEl) tpsEl.innerText = '0.0';
+
+        const ttftEl = document.getElementById('meterTTFT');
+        if (ttftEl) ttftEl.innerText = '...';
+
+        const tokEl = document.getElementById('meterTokens');
+        if (tokEl) tokEl.innerText = '0';
+
+        const durEl = document.getElementById('meterDuration');
+        if (durEl) durEl.innerText = '0.0s';
+
+        benchmarkStartTime = Date.now();
+        clearInterval(benchmarkTimer);
+        benchmarkTimer = setInterval(function() {
+          const sec = ((Date.now() - benchmarkStartTime) / 1000).toFixed(1);
+          if (durEl) durEl.innerText = sec + 's';
+        }, 100);
+
+        post('runBenchmark', {
+          endpointName: epName,
+          modelId: modelId,
+          presetId: presetId,
+        });
+      }
+
+      function startBatchBenchmark() {
+        const outBox = document.getElementById('streamOutput');
+        if (outBox) outBox.innerText = 'Starting batch benchmark for all models...';
+        post('runAllBenchmarks');
+      }
+
+      function filterModels(query) {
+        const q = (query || '').toLowerCase();
+        document.querySelectorAll('.card').forEach(function(card) {
+          const items = card.querySelectorAll('.model-item');
+          let anyVisible = false;
+          items.forEach(function(item) {
+            const text = (item.getAttribute('data-model') || '').toLowerCase();
+            if (!q || text.indexOf(q) !== -1) {
+              item.style.display = 'flex';
+              anyVisible = true;
+            } else {
+              item.style.display = 'none';
+            }
+          });
+          const cardName = (card.getAttribute('data-name') || '').toLowerCase();
+          if (!q || anyVisible || cardName.indexOf(q) !== -1) {
+            card.style.display = 'block';
           } else {
-            item.style.display = 'none';
+            card.style.display = 'none';
           }
         });
-        const cardName = card.getAttribute('data-name') || '';
-        if (cardName.includes(q) || anyVisible || !q) {
-          card.style.display = 'block';
-        } else {
-          card.style.display = 'none';
+      }
+
+      // Handle messages from VS Code backend
+      window.addEventListener('message', function(event) {
+        try {
+          const msg = event.data;
+          if (!msg) return;
+
+          if (msg.type === 'benchmarkChunk') {
+            const outBox = document.getElementById('streamOutput');
+            if (outBox) {
+              outBox.innerText += (msg.chunk || '');
+              outBox.scrollTop = outBox.scrollHeight;
+            }
+            const tokEl = document.getElementById('meterTokens');
+            if (tokEl) tokEl.innerText = msg.currentTokens || 0;
+
+            const tpsEl = document.getElementById('meterTPS');
+            if (tpsEl) tpsEl.innerText = (msg.currentTPS || 0).toFixed(1);
+          } else if (msg.type === 'benchmarkDone') {
+            clearInterval(benchmarkTimer);
+            const r = msg.result;
+            if (r) {
+              const tpsEl = document.getElementById('meterTPS');
+              if (tpsEl) tpsEl.innerText = (r.tokensPerSec || 0).toFixed(1);
+
+              const ttftEl = document.getElementById('meterTTFT');
+              if (ttftEl) ttftEl.innerText = (r.ttftMs || 0) + ' ms';
+
+              const tokEl = document.getElementById('meterTokens');
+              if (tokEl) tokEl.innerText = r.tokensGenerated || 0;
+
+              const durEl = document.getElementById('meterDuration');
+              if (durEl) durEl.innerText = ((r.totalDurationMs || 0) / 1000).toFixed(2) + 's';
+            }
+            renderLeaderboard(msg.history);
+          } else if (msg.type === 'benchmarkBatchComplete') {
+            renderLeaderboard(msg.history);
+          } else if (msg.type === 'telemetryUpdate') {
+            renderTelemetry(msg);
+          }
+        } catch (e) {
+          console.error('Message handler error:', e);
         }
       });
-    }
 
-    window.addEventListener('message', (event) => {
-      const msg = event.data;
+      function renderLeaderboard(history) {
+        try {
+          const tbody = document.getElementById('leaderboardBody');
+          if (!tbody) return;
 
-      if (msg.type === 'benchmarkChunk') {
-        const outBox = document.getElementById('streamOutput');
-        outBox.innerText += msg.chunk;
-        outBox.scrollTop = outBox.scrollHeight;
-        document.getElementById('meterTokens').innerText = msg.currentTokens;
-        document.getElementById('meterTPS').innerText = msg.currentTPS.toFixed(1);
-      } else if (msg.type === 'benchmarkDone') {
-        clearInterval(benchmarkTimer);
-        const r = msg.result;
-        document.getElementById('meterTPS').innerText = r.tokensPerSec.toFixed(1);
-        document.getElementById('meterTTFT').innerText = r.ttftMs + ' ms';
-        document.getElementById('meterTokens').innerText = r.tokensGenerated;
-        document.getElementById('meterDuration').innerText = (r.totalDurationMs / 1000).toFixed(2) + 's';
-        renderLeaderboard(msg.history);
-      } else if (msg.type === 'benchmarkBatchComplete') {
-        renderLeaderboard(msg.history);
-      } else if (msg.type === 'telemetryUpdate') {
-        renderTelemetry(msg);
-      }
-    });
+          if (!history || history.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--muted-text);">No benchmark history available.</td></tr>';
+            return;
+          }
 
-    function renderLeaderboard(history) {
-      const tbody = document.getElementById('leaderboardBody');
-      if (!history || history.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--muted-text);">No benchmark history available.</td></tr>';
-        return;
-      }
+          const sorted = history.slice().sort(function(a, b) {
+            return (b.tokensPerSec || 0) - (a.tokensPerSec || 0);
+          });
+          const maxTPS = Math.max.apply(Math, sorted.map(function(s) { return s.tokensPerSec || 1; }));
 
-      // Sort by TPS descending
-      const sorted = [...history].sort((a, b) => b.tokensPerSec - a.tokensPerSec);
-      const maxTPS = Math.max(...sorted.map(s => s.tokensPerSec), 1);
-
-      tbody.innerHTML = sorted.map((h, i) => {
-        const barW = Math.min(100, Math.round((h.tokensPerSec / maxTPS) * 100));
-        const rank = i + 1;
-        const totalSec = (h.totalDurationMs / 1000).toFixed(2);
-        const statusTxt = h.status === 'success' ? '🟢 OK' : '🔴 ' + (h.errorMessage || 'Error');
-        return '<tr>' +
-          '<td><strong>#' + rank + '</strong></td>' +
-          '<td><strong>' + h.modelId + '</strong><div class="speed-bar-container"><div class="speed-bar" style="width: ' + barW + '%;"></div></div></td>' +
-          '<td><span class="badge">' + h.endpointName + '</span></td>' +
-          '<td style="color: var(--neon-accent); font-weight: 700; font-size: 14px;">' + h.tokensPerSec + ' tok/s</td>' +
-          '<td>' + h.ttftMs + ' ms</td>' +
-          '<td>' + h.tokensGenerated + '</td>' +
-          '<td>' + totalSec + 's</td>' +
-          '<td>' + statusTxt + '</td>' +
-        '</tr>';
-      }).join('');
-    }
-
-    function renderTelemetry(data) {
-      if (data.ram) {
-        document.getElementById('ramUsageDisplay').innerText = data.ram.usedGB + ' GB / ' + data.ram.totalGB + ' GB (' + data.ram.usedPercent + '%)';
-        document.getElementById('ramBarFill').style.width = data.ram.usedPercent + '%';
-
-        const aiList = document.getElementById('aiProcessList');
-        if (data.ram.aiProcesses && data.ram.aiProcesses.length > 0) {
-          aiList.innerHTML = data.ram.aiProcesses.map(p => 
-            '<div class="proc-item ai-model">' +
-              '<span>🤖 <strong>' + (p.modelDetails || p.name) + '</strong> (PID ' + p.pid + ')</span>' +
-              '<span class="badge">' + p.ramMB + ' MB RAM</span>' +
-            '</div>'
-          ).join('');
-        } else {
-          aiList.innerHTML = '<div style="color: var(--muted-text); font-size: 12px;">No active AI processes detected.</div>';
-        }
-      }
-
-      if (data.vram) {
-        document.getElementById('gpuNameDisplay').innerText = '🎮 ' + data.vram.gpuName;
-        document.getElementById('gpuUsageDisplay').innerText = data.vram.usedVRAM_MB.toLocaleString() + ' MB Used';
-        document.getElementById('vramBarFill').style.width = Math.min(100, Math.round((data.vram.usedVRAM_MB / 12000) * 100)) + '%';
-
-        const gpuList = document.getElementById('gpuProcessList');
-        if (data.vram.processes && data.vram.processes.length > 0) {
-          gpuList.innerHTML = data.vram.processes.slice(0, 8).map(p => 
-            '<div class="proc-item ' + (p.isAIModel ? 'ai-model' : '') + '">' +
-              '<span>' + (p.isAIModel ? '🤖' : '🖥️') + ' <strong>' + p.name + '</strong> (PID ' + p.pid + ')</span>' +
-              '<span class="badge">' + (p.vramMB || 0) + ' MB</span>' +
-            '</div>'
-          ).join('');
-        }
-      }
-
-      if (data.loadedModels) {
-        const tbody = document.getElementById('loadedModelsBody');
-        if (data.loadedModels.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--muted-text);">No loaded stray models detected.</td></tr>';
-        } else {
-          tbody.innerHTML = data.loadedModels.map(m => {
-            const vramStr = m.vramMB ? m.vramMB + ' MB' : '-';
-            const ramStr = m.ramMB ? (m.ramMB / 1024).toFixed(1) + ' GB' : '-';
+          tbody.innerHTML = sorted.map(function(h, i) {
+            const tps = h.tokensPerSec || 0;
+            const barW = Math.min(100, Math.round((tps / maxTPS) * 100));
+            const rank = i + 1;
+            const totalSec = ((h.totalDurationMs || 0) / 1000).toFixed(2);
+            const statusTxt = h.status === 'success' ? '🟢 OK' : '🔴 ' + (h.errorMessage || 'Error');
             return '<tr>' +
-              '<td><strong>' + m.name + '</strong><br><small style="color: var(--muted-text);">' + (m.details || '') + '</small></td>' +
-              '<td><span class="badge">' + m.source.toUpperCase() + '</span></td>' +
-              '<td>' + (m.pid || 'N/A') + '</td>' +
-              '<td>' + vramStr + '</td>' +
-              '<td>' + ramStr + '</td>' +
-              '<td>' +
-                '<button class="card-btn" style="border-color: #ff5722; color: #ff5722;" onclick="unloadStrayModel(\'' + m.source + '\', \'' + m.name + '\', ' + (m.pid || 0) + ')">' +
-                  '🗑️ Unload' +
-                '</button>' +
-              '</td>' +
+              '<td><strong>#' + rank + '</strong></td>' +
+              '<td><strong>' + (h.modelId || '') + '</strong><div class="speed-bar-container"><div class="speed-bar" style="width: ' + barW + '%;"></div></div></td>' +
+              '<td><span class="badge">' + (h.endpointName || '') + '</span></td>' +
+              '<td style="color: var(--neon-accent); font-weight: 700; font-size: 14px;">' + tps + ' tok/s</td>' +
+              '<td>' + (h.ttftMs || 0) + ' ms</td>' +
+              '<td>' + (h.tokensGenerated || 0) + '</td>' +
+              '<td>' + totalSec + 's</td>' +
+              '<td>' + statusTxt + '</td>' +
             '</tr>';
           }).join('');
+        } catch (err) {
+          console.error('renderLeaderboard error:', err);
         }
       }
 
-      if (data.history) {
-        renderLeaderboard(data.history);
-      }
-    }
+      function renderTelemetry(data) {
+        try {
+          if (!data) return;
 
-    // Auto-fetch telemetry on page load
-    refreshTelemetry();
+          if (data.ram) {
+            const ramText = (data.ram.usedGB || 0) + ' GB / ' + (data.ram.totalGB || 0) + ' GB (' + (data.ram.usedPercent || 0) + '%)';
+            const ramEl = document.getElementById('ramUsageDisplay');
+            if (ramEl) ramEl.innerText = ramText;
+
+            const ramBar = document.getElementById('ramBarFill');
+            if (ramBar) ramBar.style.width = (data.ram.usedPercent || 0) + '%';
+
+            const aiList = document.getElementById('aiProcessList');
+            if (aiList) {
+              if (data.ram.aiProcesses && data.ram.aiProcesses.length > 0) {
+                aiList.innerHTML = data.ram.aiProcesses.map(function(p) {
+                  return '<div class="proc-item ai-model">' +
+                    '<span>🤖 <strong>' + (p.modelDetails || p.name) + '</strong> (PID ' + p.pid + ')</span>' +
+                    '<span class="badge">' + (p.ramMB || 0) + ' MB RAM</span>' +
+                  '</div>';
+                }).join('');
+              } else {
+                aiList.innerHTML = '<div style="color: var(--muted-text); font-size: 12px;">No active AI processes detected.</div>';
+              }
+            }
+          }
+
+          if (data.vram) {
+            const gpuName = data.vram.gpuName || 'Graphics Adapter';
+            const vramMB = typeof data.vram.usedVRAM_MB === 'number' ? data.vram.usedVRAM_MB : 0;
+
+            const gpuNameEl = document.getElementById('gpuNameDisplay');
+            if (gpuNameEl) gpuNameEl.innerText = '🎮 ' + gpuName;
+
+            const gpuUsageEl = document.getElementById('gpuUsageDisplay');
+            if (gpuUsageEl) gpuUsageEl.innerText = vramMB.toLocaleString() + ' MB Used';
+
+            const vramBar = document.getElementById('vramBarFill');
+            if (vramBar) vramBar.style.width = Math.min(100, Math.round((vramMB / 12000) * 100)) + '%';
+
+            const gpuList = document.getElementById('gpuProcessList');
+            if (gpuList) {
+              if (data.vram.processes && data.vram.processes.length > 0) {
+                gpuList.innerHTML = data.vram.processes.slice(0, 8).map(function(p) {
+                  return '<div class="proc-item ' + (p.isAIModel ? 'ai-model' : '') + '">' +
+                    '<span>' + (p.isAIModel ? '🤖' : '🖥️') + ' <strong>' + p.name + '</strong> (PID ' + p.pid + ')</span>' +
+                    '<span class="badge">' + (p.vramMB || 0) + ' MB</span>' +
+                  '</div>';
+                }).join('');
+              }
+            }
+          }
+
+          if (data.loadedModels) {
+            const tbody = document.getElementById('loadedModelsBody');
+            if (tbody) {
+              if (data.loadedModels.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--muted-text);">No loaded stray models detected.</td></tr>';
+              } else {
+                tbody.innerHTML = data.loadedModels.map(function(m) {
+                  const vramStr = m.vramMB ? m.vramMB + ' MB' : '-';
+                  const ramStr = m.ramMB ? (m.ramMB / 1024).toFixed(1) + ' GB' : '-';
+                  return '<tr>' +
+                    '<td><strong>' + (m.name || '') + '</strong><br><small style="color: var(--muted-text);">' + (m.details || '') + '</small></td>' +
+                    '<td><span class="badge">' + (m.source || '').toUpperCase() + '</span></td>' +
+                    '<td>' + (m.pid || 'N/A') + '</td>' +
+                    '<td>' + vramStr + '</td>' +
+                    '<td>' + ramStr + '</td>' +
+                    '<td>' +
+                      '<button class="card-btn btn-unload" style="border-color: #ff5722; color: #ff5722;" data-source="' + (m.source || '') + '" data-name="' + (m.name || '') + '" data-pid="' + (m.pid || 0) + '">' +
+                        '🗑️ Unload' +
+                      '</button>' +
+                    '</td>' +
+                  '</tr>';
+                }).join('');
+
+                // Attach unload listeners
+                tbody.querySelectorAll('.btn-unload').forEach(function(b) {
+                  b.addEventListener('click', function() {
+                    post('unloadModel', {
+                      source: this.getAttribute('data-source'),
+                      modelName: this.getAttribute('data-name'),
+                      pid: parseInt(this.getAttribute('data-pid') || '0', 10),
+                    });
+                  });
+                });
+              }
+            }
+          }
+
+          if (data.history) {
+            renderLeaderboard(data.history);
+          }
+        } catch (err) {
+          console.error('renderTelemetry error:', err);
+        }
+      }
+
+      // Initialize when script runs
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initListeners);
+      } else {
+        initListeners();
+      }
+
+      // Auto-fetch telemetry after UI renders
+      setTimeout(function() {
+        post('getTelemetry');
+      }, 50);
+    })();
   </script>
 </body>
 </html>`;
