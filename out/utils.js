@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.convertMessagesToOpenAI = convertMessagesToOpenAI;
 exports.convertToolsToOpenAI = convertToolsToOpenAI;
+exports.normalizeBaseUrl = normalizeBaseUrl;
 exports.resolveEndpointApiKey = resolveEndpointApiKey;
 exports.getApiKeyCandidates = getApiKeyCandidates;
 const vscode = __importStar(require("vscode"));
@@ -153,6 +154,18 @@ function collectToolResultText(part) {
     return text;
 }
 /**
+ * Normalizes endpoint URL, automatically ensuring protocol prefix (http/https).
+ */
+function normalizeBaseUrl(rawUrl) {
+    let url = (rawUrl || '').trim();
+    if (!url)
+        return '';
+    if (!/^https?:\/\//i.test(url)) {
+        url = `http://${url}`;
+    }
+    return url.replace(/\/+$/, '');
+}
+/**
  * Automatically grabs and resolves active API keys from configuration,
  * environment variables, and known server credentials.
  */
@@ -173,7 +186,35 @@ function getApiKeyCandidates(endpoint) {
             candidates.push(k.trim());
         }
     };
-    // 1. Check Lemonade Server
+    // 1. Check SimpleRAG Server (Port 11211)
+    if (urlLower.includes(':11211') || nameLower.includes('simplerag') || nameLower.includes('simple-rag') || nameLower.includes('simple rag')) {
+        add(process.env.SIMPLERAG_API_KEY);
+        add(process.env.SIMPLE_RAG_API_KEY);
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            const home = process.env.USERPROFILE || process.env.HOME || '';
+            const settingsPaths = [
+                path.join(home, 'AppData', 'Local', 'RAGWorkspace', 'runtime', 'GUI', 'data', 'simple_rag_server_settings.json'),
+                path.join(home, 'AppData', 'Roaming', 'SimpleRAG', 'simple_rag_server_settings.json'),
+            ];
+            for (const sp of settingsPaths) {
+                if (fs.existsSync(sp)) {
+                    const content = JSON.parse(fs.readFileSync(sp, 'utf-8'));
+                    if (content && content.api_key) {
+                        add(content.api_key);
+                    }
+                }
+            }
+        }
+        catch { }
+        if (configKey && !configKey.startsWith('${'))
+            add(configKey);
+        add('Maitland1,');
+        add('simplerag');
+        return candidates;
+    }
+    // 2. Check Lemonade Server
     if (urlLower.includes(':9000') || urlLower.includes(':13305') || nameLower.includes('lemonade')) {
         add(process.env.LEMONADE_API_KEY);
         add(process.env.LEMONADE_ADMIN_API_KEY);
@@ -187,7 +228,7 @@ function getApiKeyCandidates(endpoint) {
         add('lemonade');
         return candidates;
     }
-    // 2. Check DashScope / Qwen / Alibaba
+    // 3. Check DashScope / Qwen / Alibaba
     if (urlLower.includes('aliyuncs.com') ||
         urlLower.includes('dashscope') ||
         nameLower.includes('dashscope') ||
@@ -202,7 +243,7 @@ function getApiKeyCandidates(endpoint) {
         add(process.env.OPENAI_API_KEY);
         return candidates;
     }
-    // 3. Check DeepSeek
+    // 4. Check DeepSeek
     if (urlLower.includes('deepseek') || nameLower.includes('deepseek')) {
         if (configKey && !configKey.startsWith('${') && configKey !== 'dummy')
             add(configKey);
@@ -210,7 +251,7 @@ function getApiKeyCandidates(endpoint) {
         add(process.env.OPENAI_API_KEY);
         return candidates;
     }
-    // 4. Check LM Studio
+    // 5. Check LM Studio
     if (urlLower.includes(':1234') || nameLower.includes('lm studio')) {
         add(process.env.LM_STUDIO_API_KEY);
         if (configKey && !configKey.startsWith('${'))
@@ -218,14 +259,14 @@ function getApiKeyCandidates(endpoint) {
         add('lm-studio');
         return candidates;
     }
-    // 5. Check Ollama
+    // 6. Check Ollama
     if (urlLower.includes(':11434') || nameLower.includes('ollama')) {
         if (configKey)
             add(configKey);
         add('ollama');
         return candidates;
     }
-    // 6. Check OpenAI
+    // 7. Check OpenAI
     if (urlLower.includes('openai.com') || nameLower.includes('openai')) {
         if (configKey && !configKey.startsWith('${'))
             add(configKey);
@@ -233,7 +274,7 @@ function getApiKeyCandidates(endpoint) {
         add(process.env.CUSTOM_OAI_API_KEY);
         return candidates;
     }
-    // 7. General Fallback
+    // 8. General Fallback
     if (configKey && !configKey.startsWith('${'))
         add(configKey);
     add(process.env.OPENAI_API_KEY);

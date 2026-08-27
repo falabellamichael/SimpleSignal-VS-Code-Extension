@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { EndpointConfig } from './types';
-import { convertMessagesToOpenAI, convertToolsToOpenAI, resolveEndpointApiKey, getApiKeyCandidates } from './utils';
+import { convertMessagesToOpenAI, convertToolsToOpenAI, resolveEndpointApiKey, getApiKeyCandidates, normalizeBaseUrl } from './utils';
 import { ModelTelemetryTracker } from './telemetryTracker';
 
 export class SimpleSignalChatProvider implements vscode.LanguageModelChatProvider<vscode.LanguageModelChatInformation> {
@@ -131,7 +131,7 @@ export class SimpleSignalChatProvider implements vscode.LanguageModelChatProvide
       promptTokens: estimatedPromptTokens,
     });
 
-    const baseUrl = targetEndpoint.baseUrl.replace(/\/$/, '');
+    const baseUrl = normalizeBaseUrl(targetEndpoint.baseUrl);
     let chatUrl = baseUrl;
     if (!chatUrl.endsWith('/chat/completions')) {
       chatUrl = `${baseUrl}/chat/completions`;

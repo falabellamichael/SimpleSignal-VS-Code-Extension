@@ -143,7 +143,7 @@ class SimpleSignalChatProvider {
             promptPreview: promptSnippet.slice(0, 1500),
             promptTokens: estimatedPromptTokens,
         });
-        const baseUrl = targetEndpoint.baseUrl.replace(/\/$/, '');
+        const baseUrl = (0, utils_1.normalizeBaseUrl)(targetEndpoint.baseUrl);
         let chatUrl = baseUrl;
         if (!chatUrl.endsWith('/chat/completions')) {
             chatUrl = `${baseUrl}/chat/completions`;

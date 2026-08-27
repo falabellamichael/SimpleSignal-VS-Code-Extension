@@ -38,6 +38,13 @@ const vscode = __importStar(require("vscode"));
 const utils_1 = require("./utils");
 const LOCAL_PROBE_TARGETS = [
     {
+        name: 'SimpleRAG Local Server',
+        baseUrl: 'http://127.0.0.1:11211/v1',
+        apiKey: 'Maitland1,',
+        protocol: 'openai',
+        checkUrl: 'http://127.0.0.1:11211/v1/models',
+    },
+    {
         name: 'Lemonade Local Server',
         baseUrl: 'http://127.0.0.1:9000/api/v1',
         apiKey: 'local-lemonade',
@@ -75,7 +82,7 @@ class ModelFetcher {
         // 1. Auto-probe local servers if enabled
         if (autoScan) {
             for (const target of LOCAL_PROBE_TARGETS) {
-                const alreadyExists = endpoints.some((e) => e.baseUrl.replace(/\/$/, '') === target.baseUrl.replace(/\/$/, ''));
+                const alreadyExists = endpoints.some((e) => (0, utils_1.normalizeBaseUrl)(e.baseUrl) === (0, utils_1.normalizeBaseUrl)(target.baseUrl));
                 if (!alreadyExists) {
                     try {
                         const candidateKeys = (0, utils_1.getApiKeyCandidates)(target);
@@ -125,6 +132,12 @@ class ModelFetcher {
                 continue;
             }
             try {
+                // Auto-fix URL formatting (e.g. localhost:11211/v1 -> http://localhost:11211/v1)
+                endpoint.baseUrl = (0, utils_1.normalizeBaseUrl)(endpoint.baseUrl);
+                // SimpleRAG uses OpenAI compatible format
+                if (endpoint.baseUrl.includes(':11211') || endpoint.name.toLowerCase().includes('simplerag')) {
+                    endpoint.protocol = 'openai';
+                }
                 // Automatically ensure active API key is resolved
                 if (!endpoint.apiKey || endpoint.apiKey === 'lemonade') {
                     endpoint.apiKey = (0, utils_1.resolveEndpointApiKey)(endpoint);
