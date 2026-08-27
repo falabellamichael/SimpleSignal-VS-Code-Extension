@@ -47,10 +47,10 @@ class BenchmarkEngine {
         },
         {
             id: 'code_gen',
-            name: '💻 Luau & Code Synthesis (200 Tokens)',
-            description: 'Algorithm and coding prompt to benchmark code completion latency.',
-            prompt: 'Write a performant Luau spatial hashing grid class for Roblox with Insert, Remove, and QueryRange methods with type annotations.',
-            maxTokens: 200,
+            name: '🎮 Lua 200-Line Sudoku Game (900 Tokens)',
+            description: 'Instructs the model to write a full ~200-line Sudoku game in Lua with generator, backtracking solver, validator, and game loop.',
+            prompt: 'Write a complete, playable 200-line Sudoku game in pure Lua (or Luau). Include: 1. A 9x9 board representation with grid printing and ASCII formatting. 2. A recursive backtracking Sudoku solver to validate solutions and solve boards. 3. A puzzle generator with difficulty levels that removes numbers while ensuring a unique solution. 4. Input validation (check row, column, and 3x3 subgrid constraints). 5. An interactive game loop allowing the player to place numbers, check errors, and ask for hints. Include helpful comments and structure it cleanly so it reaches approximately 200 lines of robust code.',
+            maxTokens: 900,
         },
         {
             id: 'reasoning_stress',

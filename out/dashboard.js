@@ -840,7 +840,7 @@ class SimpleSignalDashboard {
           <label>Performance Preset</label>
           <select id="benchPresetSelect" class="select-box" style="width: 100%;">
             <option value="quick_speed">🚀 Quick Speed (64 Tokens)</option>
-            <option value="code_gen">💻 Luau & Code Synthesis (200 Tokens)</option>
+            <option value="code_gen">🎮 Lua 200-Line Sudoku Game (900 Tokens)</option>
             <option value="reasoning_stress">🧠 Deep Reasoning (350 Tokens)</option>
           </select>
         </div>
