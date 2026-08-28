@@ -114,6 +114,21 @@ class SimpleSignalDashboard {
                     case 'unloadModel':
                         await this.handleUnloadModel(message);
                         break;
+                    case 'loadModel':
+                        await this.handleLoadModel(message);
+                        break;
+                    case 'unloadModelAction':
+                        await this.handleUnloadModelAction(message);
+                        break;
+                    case 'selectModel':
+                        await this.handleSelectModel(message);
+                        break;
+                    case 'testModelConnection':
+                        await this.handleTestModelConnection(message);
+                        break;
+                    case 'copyModelId':
+                        await this.handleCopyModelId(message);
+                        break;
                     case 'clearBenchmarkHistory':
                         benchmarkEngine_1.BenchmarkEngine.clearHistory();
                         await this.sendTelemetryData();
@@ -258,6 +273,85 @@ class SimpleSignalDashboard {
         }
         await this.sendTelemetryData();
     }
+    async handleLoadModel(message) {
+        const config = vscode.workspace.getConfiguration('simplesignal');
+        const endpoints = config.get('endpoints', []);
+        const target = endpoints.find((e) => e.name === message.endpointName);
+        if (!target) {
+            vscode.window.showErrorMessage(`Endpoint "${message.endpointName}" not found.`);
+            return;
+        }
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `⚡ SimpleSignal: Loading "${message.modelId}" into memory...`,
+            cancellable: false,
+        }, async () => {
+            const res = await systemDiagnostics_1.SystemDiagnostics.loadModel(target, message.modelId);
+            if (res.success) {
+                vscode.window.showInformationMessage(`⚡ ${res.message}`);
+            }
+            else {
+                vscode.window.showErrorMessage(`Failed to load "${message.modelId}": ${res.message}`);
+            }
+            await this.sendTelemetryData();
+        });
+    }
+    async handleUnloadModelAction(message) {
+        const config = vscode.workspace.getConfiguration('simplesignal');
+        const endpoints = config.get('endpoints', []);
+        const target = endpoints.find((e) => e.name === message.endpointName);
+        if (!target) {
+            vscode.window.showErrorMessage(`Endpoint "${message.endpointName}" not found.`);
+            return;
+        }
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `🛑 SimpleSignal: Unloading "${message.modelId}" from memory...`,
+            cancellable: false,
+        }, async () => {
+            const res = await systemDiagnostics_1.SystemDiagnostics.unloadModel(target, message.modelId);
+            if (res.success) {
+                vscode.window.showInformationMessage(`🛑 ${res.message}`);
+            }
+            else {
+                vscode.window.showErrorMessage(`Failed to unload "${message.modelId}": ${res.message}`);
+            }
+            await this.sendTelemetryData();
+        });
+    }
+    async handleSelectModel(message) {
+        await vscode.env.clipboard.writeText(message.modelId);
+        const action = await vscode.window.showInformationMessage(`✨ Selected "${message.modelId}" [${message.endpointName}]! (Copied ID to clipboard)`, 'Open Chat');
+        if (action === 'Open Chat') {
+            await vscode.commands.executeCommand('workbench.action.chat.open');
+        }
+    }
+    async handleTestModelConnection(message) {
+        const config = vscode.workspace.getConfiguration('simplesignal');
+        const endpoints = config.get('endpoints', []);
+        const target = endpoints.find((e) => e.name === message.endpointName);
+        if (!target)
+            return;
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `🧪 Testing connection for "${message.modelId}"...`,
+            cancellable: false,
+        }, async () => {
+            const start = Date.now();
+            const res = await systemDiagnostics_1.SystemDiagnostics.loadModel(target, message.modelId);
+            const latency = Date.now() - start;
+            if (res.success) {
+                vscode.window.showInformationMessage(`🟢 [${message.endpointName}] "${message.modelId}" connection active! (${latency} ms)`);
+            }
+            else {
+                vscode.window.showErrorMessage(`🔴 [${message.endpointName}] "${message.modelId}" test error: ${res.message}`);
+            }
+        });
+    }
+    async handleCopyModelId(message) {
+        await vscode.env.clipboard.writeText(message.modelId);
+        vscode.window.showInformationMessage(`📋 Copied "${message.modelId}" to clipboard!`);
+    }
     dispose() {
         SimpleSignalDashboard.currentPanel = undefined;
         this._panel.dispose();
@@ -266,6 +360,22 @@ class SimpleSignalDashboard {
             if (x)
                 x.dispose();
         }
+    }
+    isLocalEndpoint(baseUrl, name) {
+        const b = (baseUrl || '').toLowerCase();
+        const n = (name || '').toLowerCase();
+        return (b.includes('localhost') ||
+            b.includes('127.0.0.1') ||
+            b.includes(':9000') ||
+            b.includes(':1234') ||
+            b.includes(':11434') ||
+            b.includes(':8000') ||
+            b.includes(':11211') ||
+            n.includes('local') ||
+            n.includes('lemonade') ||
+            n.includes('ollama') ||
+            n.includes('lm studio') ||
+            n.includes('simplerag'));
     }
     _update() {
         this._panel.title = '⚡ SimpleSignal Hub';
@@ -604,6 +714,90 @@ class SimpleSignalDashboard {
 
     .model-item:hover {
       background: rgba(255, 255, 255, 0.07);
+    }
+
+    .btn-dots {
+      padding: 2px 7px;
+      font-size: 11px;
+      letter-spacing: 1px;
+      font-weight: 700;
+      border-radius: 4px;
+      cursor: pointer;
+      line-height: 1;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--card-border);
+      color: var(--text-color);
+      transition: all 0.15s ease;
+    }
+
+    .btn-dots:hover {
+      background: var(--neon-accent);
+      color: #000;
+      border-color: var(--neon-accent);
+      box-shadow: 0 0 8px var(--neon-glow);
+    }
+
+    .model-action-menu {
+      position: fixed;
+      display: none;
+      background: rgba(18, 18, 22, 0.97);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--neon-accent);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.75);
+      border-radius: 8px;
+      padding: 4px 0;
+      z-index: 99999;
+      min-width: 195px;
+      font-size: 12px;
+      color: var(--text-color);
+      animation: menuFadeIn 0.12s ease-out;
+    }
+
+    @keyframes menuFadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .model-menu-title {
+      padding: 6px 14px;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted-text);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--card-border);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .model-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 14px;
+      cursor: pointer;
+      transition: all 0.12s ease;
+      user-select: none;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .model-menu-item:hover {
+      background: rgba(255, 230, 0, 0.15);
+      color: var(--neon-accent);
+      padding-left: 17px;
+    }
+
+    .model-menu-item.danger:hover {
+      background: rgba(255, 82, 82, 0.18);
+      color: #ff5252;
+    }
+
+    .model-menu-divider {
+      height: 1px;
+      background: var(--card-border);
+      margin: 4px 0;
     }
 
     .badge {
@@ -1054,6 +1248,7 @@ class SimpleSignalDashboard {
       ${endpoints
             .map((ep) => {
             const isEnabled = ep.enabled !== false;
+            const isLocal = this.isLocalEndpoint(ep.baseUrl, ep.name);
             const models = ep.models || [];
             return `
         <div class="card" data-name="${ep.name.toLowerCase()}" data-endpoint-name="${ep.name.toLowerCase()}">
@@ -1085,8 +1280,8 @@ class SimpleSignalDashboard {
               ${models.length > 0
                 ? models
                     .map((m) => `
-                <div class="model-item" data-model="${m.id.toLowerCase()}">
-                  <div style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <div class="model-item" data-model="${m.id.toLowerCase()}" data-endpoint="${ep.name}">
+                  <div style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; margin-right: 6px;">
                     <svg style="width: 12px; height: 12px; color: var(--neon-accent); flex-shrink: 0;" viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M 86.29 202.29 A 240 240 0 0 1 425.71 202.29" stroke-width="42" />
                       <path d="M 142.86 258.86 A 160 160 0 0 1 369.14 258.86" stroke-width="42" />
@@ -1099,6 +1294,7 @@ class SimpleSignalDashboard {
                     ${m.supportsVision ? '<span class="badge" title="Vision Capable">👁️</span>' : ''}
                     ${m.supportsTools ? '<span class="badge" title="Function Calling / Tools">🛠️</span>' : ''}
                     <button class="card-btn" style="padding: 2px 6px; font-size: 9px;" onclick="window.selectModelForBench('${ep.name}', '${m.id}')" title="Test this model">⚡ Test</button>
+                    <button class="card-btn btn-dots" data-endpoint="${ep.name}" data-model="${m.id}" data-type="${isLocal ? 'local' : 'api'}" title="Actions: ${isLocal ? 'Load / Unload / Benchmark' : 'Select / Test / Benchmark'}">•••</button>
                   </div>
                 </div>`)
                     .join('')
@@ -1352,6 +1548,11 @@ Waiting to run performance test...
     </div>
   </div>
 
+  <div id="modelActionMenu" class="model-action-menu">
+    <div id="modelMenuTitle" class="model-menu-title">Model Actions</div>
+    <div id="modelMenuItems"></div>
+  </div>
+
   <script>
     (function() {
       let vscode;
@@ -1569,6 +1770,137 @@ Waiting to run performance test...
             } else if (action === 'toggle' && ep) {
               post('toggleEndpoint', { name: ep });
             }
+          });
+        });
+
+        // Setup "..." Model Action Dropdown Menu
+        const menuEl = document.getElementById('modelActionMenu');
+        const menuTitleEl = document.getElementById('modelMenuTitle');
+        const menuItemsEl = document.getElementById('modelMenuItems');
+
+        function closeModelMenu() {
+          if (menuEl) menuEl.style.display = 'none';
+        }
+
+        document.addEventListener('click', function(e) {
+          if (menuEl && !menuEl.contains(e.target) && !e.target.classList.contains('btn-dots')) {
+            closeModelMenu();
+          }
+        });
+
+        document.addEventListener('keydown', function(e) {
+          if (e.key === 'Escape') closeModelMenu();
+        });
+
+        document.querySelectorAll('.btn-dots').forEach(function(btn) {
+          btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const ep = this.getAttribute('data-endpoint') || '';
+            const modelId = this.getAttribute('data-model') || '';
+            const type = this.getAttribute('data-type') || 'local';
+
+            if (!menuEl || !menuTitleEl || !menuItemsEl) return;
+
+            menuTitleEl.innerText = ep + ' • ' + modelId;
+            menuItemsEl.innerHTML = '';
+
+            if (type === 'local') {
+              // Local Model Options: Load, Unload, Benchmark, Copy ID
+              const loadItem = document.createElement('div');
+              loadItem.className = 'model-menu-item';
+              loadItem.innerHTML = '<span>⚡</span> <span><strong>Load</strong> into VRAM / Memory</span>';
+              loadItem.addEventListener('click', function() {
+                post('loadModel', { endpointName: ep, modelId: modelId });
+                closeModelMenu();
+              });
+
+              const unloadItem = document.createElement('div');
+              unloadItem.className = 'model-menu-item danger';
+              unloadItem.innerHTML = '<span>🛑</span> <span><strong>Unload</strong> from VRAM</span>';
+              unloadItem.addEventListener('click', function() {
+                post('unloadModelAction', { endpointName: ep, modelId: modelId });
+                closeModelMenu();
+              });
+
+              const benchItem = document.createElement('div');
+              benchItem.className = 'model-menu-item';
+              benchItem.innerHTML = '<span>🚀</span> <span>Run Speed Benchmark</span>';
+              benchItem.addEventListener('click', function() {
+                window.selectModelForBench(ep, modelId);
+                closeModelMenu();
+              });
+
+              const copyItem = document.createElement('div');
+              copyItem.className = 'model-menu-item';
+              copyItem.innerHTML = '<span>📋</span> <span>Copy Model ID</span>';
+              copyItem.addEventListener('click', function() {
+                post('copyModelId', { modelId: modelId });
+                closeModelMenu();
+              });
+
+              const divider = document.createElement('div');
+              divider.className = 'model-menu-divider';
+
+              menuItemsEl.appendChild(loadItem);
+              menuItemsEl.appendChild(unloadItem);
+              menuItemsEl.appendChild(divider);
+              menuItemsEl.appendChild(benchItem);
+              menuItemsEl.appendChild(copyItem);
+            } else {
+              // API Model Options: Select, Benchmark, Test Connection, Copy ID
+              const selectItem = document.createElement('div');
+              selectItem.className = 'model-menu-item';
+              selectItem.innerHTML = '<span>✨</span> <span><strong>Select</strong> for VS Code Chat</span>';
+              selectItem.addEventListener('click', function() {
+                post('selectModel', { endpointName: ep, modelId: modelId });
+                closeModelMenu();
+              });
+
+              const testItem = document.createElement('div');
+              testItem.className = 'model-menu-item';
+              testItem.innerHTML = '<span>🧪</span> <span>Test API Connection</span>';
+              testItem.addEventListener('click', function() {
+                post('testModelConnection', { endpointName: ep, modelId: modelId });
+                closeModelMenu();
+              });
+
+              const benchItem = document.createElement('div');
+              benchItem.className = 'model-menu-item';
+              benchItem.innerHTML = '<span>🚀</span> <span>Run Speed Benchmark</span>';
+              benchItem.addEventListener('click', function() {
+                window.selectModelForBench(ep, modelId);
+                closeModelMenu();
+              });
+
+              const copyItem = document.createElement('div');
+              copyItem.className = 'model-menu-item';
+              copyItem.innerHTML = '<span>📋</span> <span>Copy Model ID</span>';
+              copyItem.addEventListener('click', function() {
+                post('copyModelId', { modelId: modelId });
+                closeModelMenu();
+              });
+
+              const divider = document.createElement('div');
+              divider.className = 'model-menu-divider';
+
+              menuItemsEl.appendChild(selectItem);
+              menuItemsEl.appendChild(testItem);
+              menuItemsEl.appendChild(divider);
+              menuItemsEl.appendChild(benchItem);
+              menuItemsEl.appendChild(copyItem);
+            }
+
+            // Position menu near button
+            const rect = btn.getBoundingClientRect();
+            menuEl.style.display = 'block';
+            let left = rect.right - 200;
+            if (left < 10) left = 10;
+            let top = rect.bottom + 6;
+            if (top + 190 > window.innerHeight) {
+              top = rect.top - 180;
+            }
+            menuEl.style.left = left + 'px';
+            menuEl.style.top = top + 'px';
           });
         });
       }

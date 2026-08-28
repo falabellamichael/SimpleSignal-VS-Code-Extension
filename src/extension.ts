@@ -568,6 +568,157 @@ export function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(testCmd);
 
+  // Load model command
+  const loadModelCmd = vscode.commands.registerCommand('simplesignal.loadModel', async (node?: any) => {
+    let endpointName = node?.endpointName;
+    let modelId = node?.model?.id || node?.label;
+
+    if (!endpointName || !modelId) {
+      const config = vscode.workspace.getConfiguration('simplesignal');
+      const endpoints = config.get<EndpointConfig[]>('endpoints', []);
+      const localEps = endpoints.filter((e) => e.enabled !== false && (e.models?.length || 0) > 0);
+      const items: (vscode.QuickPickItem & { ep: EndpointConfig; modelId: string })[] = [];
+      for (const ep of localEps) {
+        for (const m of ep.models || []) {
+          items.push({
+            label: `$(zap) ${m.id}`,
+            description: `[${ep.name}]`,
+            ep,
+            modelId: m.id,
+          });
+        }
+      }
+      const picked = await vscode.window.showQuickPick(items, {
+        title: 'SimpleSignal: Load Model into Memory / VRAM',
+        placeHolder: 'Select a model to load / warm up into memory',
+      });
+      if (!picked) return;
+      endpointName = picked.ep.name;
+      modelId = picked.modelId;
+    }
+
+    const config = vscode.workspace.getConfiguration('simplesignal');
+    const endpoints = config.get<EndpointConfig[]>('endpoints', []);
+    const target = endpoints.find((e) => e.name === endpointName);
+    if (!target) return;
+
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `⚡ SimpleSignal: Loading "${modelId}" into memory...`,
+        cancellable: false,
+      },
+      async () => {
+        const res = await SystemDiagnostics.loadModel(target, modelId);
+        if (res.success) {
+          vscode.window.showInformationMessage(`⚡ ${res.message}`);
+        } else {
+          vscode.window.showErrorMessage(`Failed to load "${modelId}": ${res.message}`);
+        }
+      }
+    );
+  });
+  context.subscriptions.push(loadModelCmd);
+
+  // Unload model command
+  const unloadModelCmd = vscode.commands.registerCommand('simplesignal.unloadModel', async (node?: any) => {
+    let endpointName = node?.endpointName;
+    let modelId = node?.model?.id || node?.label;
+
+    if (!endpointName || !modelId) {
+      const config = vscode.workspace.getConfiguration('simplesignal');
+      const endpoints = config.get<EndpointConfig[]>('endpoints', []);
+      const localEps = endpoints.filter((e) => e.enabled !== false && (e.models?.length || 0) > 0);
+      const items: (vscode.QuickPickItem & { ep: EndpointConfig; modelId: string })[] = [];
+      for (const ep of localEps) {
+        for (const m of ep.models || []) {
+          items.push({
+            label: `$(circle-slash) ${m.id}`,
+            description: `[${ep.name}]`,
+            ep,
+            modelId: m.id,
+          });
+        }
+      }
+      const picked = await vscode.window.showQuickPick(items, {
+        title: 'SimpleSignal: Unload Model from Memory / VRAM',
+        placeHolder: 'Select a model to unload / eject from memory',
+      });
+      if (!picked) return;
+      endpointName = picked.ep.name;
+      modelId = picked.modelId;
+    }
+
+    const config = vscode.workspace.getConfiguration('simplesignal');
+    const endpoints = config.get<EndpointConfig[]>('endpoints', []);
+    const target = endpoints.find((e) => e.name === endpointName);
+    if (!target) return;
+
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `🛑 SimpleSignal: Unloading "${modelId}" from memory...`,
+        cancellable: false,
+      },
+      async () => {
+        const res = await SystemDiagnostics.unloadModel(target, modelId);
+        if (res.success) {
+          vscode.window.showInformationMessage(`🛑 ${res.message}`);
+        } else {
+          vscode.window.showErrorMessage(`Failed to unload "${modelId}": ${res.message}`);
+        }
+      }
+    );
+  });
+  context.subscriptions.push(unloadModelCmd);
+
+  // Select model command
+  const selectModelCmd = vscode.commands.registerCommand('simplesignal.selectModel', async (node?: any) => {
+    const modelId = node?.model?.id || node?.label;
+    const epName = node?.endpointName || 'SimpleSignal';
+
+    if (!modelId) {
+      const config = vscode.workspace.getConfiguration('simplesignal');
+      const endpoints = config.get<EndpointConfig[]>('endpoints', []);
+      const items: (vscode.QuickPickItem & { modelId: string; epName: string })[] = [];
+      for (const ep of endpoints) {
+        if (ep.enabled === false) continue;
+        for (const m of ep.models || []) {
+          items.push({
+            label: `$(radio-tower) ${m.id}`,
+            description: `[${ep.name}]`,
+            modelId: m.id,
+            epName: ep.name,
+          });
+        }
+      }
+      const picked = await vscode.window.showQuickPick(items, {
+        title: 'SimpleSignal: Select Model for VS Code Chat',
+        placeHolder: 'Select a model to copy ID & use in chat',
+      });
+      if (!picked) return;
+      await vscode.env.clipboard.writeText(picked.modelId);
+      const action = await vscode.window.showInformationMessage(
+        `✨ Selected "${picked.modelId}" [${picked.epName}]! (Copied ID to clipboard)`,
+        'Open Chat'
+      );
+      if (action === 'Open Chat') {
+        await vscode.commands.executeCommand('workbench.action.chat.open');
+      }
+      return;
+    }
+
+    await vscode.env.clipboard.writeText(modelId);
+    const action = await vscode.window.showInformationMessage(
+      `✨ Selected "${modelId}" [${epName}]! (Copied ID to clipboard)`,
+      'Open Chat'
+    );
+    if (action === 'Open Chat') {
+      await vscode.commands.executeCommand('workbench.action.chat.open');
+    }
+  });
+  context.subscriptions.push(selectModelCmd);
+
   // Watch configuration changes
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {

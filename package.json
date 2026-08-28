@@ -113,6 +113,21 @@
         "command": "simplesignal.openGitHub",
         "title": "SimpleSignal: Open GitHub Repository",
         "icon": "$(github)"
+      },
+      {
+        "command": "simplesignal.loadModel",
+        "title": "Load Model into Memory / VRAM",
+        "icon": "$(zap)"
+      },
+      {
+        "command": "simplesignal.unloadModel",
+        "title": "Unload Model from Memory / VRAM",
+        "icon": "$(circle-slash)"
+      },
+      {
+        "command": "simplesignal.selectModel",
+        "title": "Select Model for VS Code Chat",
+        "icon": "$(radio-tower)"
       }
     ],
     "menus": {
@@ -131,6 +146,23 @@
           "command": "simplesignal.manageEndpoints",
           "when": "view == simplesignalExplorer",
           "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "simplesignal.loadModel",
+          "when": "view == simplesignalExplorer && viewItem == model_item_local",
+          "group": "inline@1"
+        },
+        {
+          "command": "simplesignal.unloadModel",
+          "when": "view == simplesignalExplorer && viewItem == model_item_local",
+          "group": "inline@2"
+        },
+        {
+          "command": "simplesignal.selectModel",
+          "when": "view == simplesignalExplorer && (viewItem == model_item_api || viewItem == model_item_local)",
+          "group": "inline@3"
         }
       ]
     },

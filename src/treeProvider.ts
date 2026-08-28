@@ -222,19 +222,47 @@ export class SimpleSignalTreeDataProvider implements vscode.TreeDataProvider<Tre
     return [];
   }
 
+  private isLocalEndpoint(epName: string): boolean {
+    const config = vscode.workspace.getConfiguration('simplesignal');
+    const endpoints = config.get<EndpointConfig[]>('endpoints', []);
+    const ep = endpoints.find((e) => e.name === epName);
+    if (!ep) return false;
+    const b = (ep.baseUrl || '').toLowerCase();
+    const n = (ep.name || '').toLowerCase();
+    return (
+      b.includes('localhost') ||
+      b.includes('127.0.0.1') ||
+      b.includes(':9000') ||
+      b.includes(':1234') ||
+      b.includes(':11434') ||
+      b.includes(':8000') ||
+      b.includes(':11211') ||
+      n.includes('local') ||
+      n.includes('lemonade') ||
+      n.includes('ollama') ||
+      n.includes('lm studio') ||
+      n.includes('simplerag')
+    );
+  }
+
   private createModelNode(model: ModelConfig, endpointName: string): TreeItemNode {
     const badges: string[] = [];
     if (model.supportsVision) badges.push('👁️');
     if (model.supportsTools) badges.push('🛠️');
 
+    const isLocal = this.isLocalEndpoint(endpointName);
+    const contextVal = isLocal ? 'model_item_local' : 'model_item_api';
+
     const node = new TreeItemNode(
       model.id,
       vscode.TreeItemCollapsibleState.None,
-      'model_item',
+      contextVal,
       this.getSignalLogoIcon()
     );
     node.description = `${badges.join(' ')} [${endpointName}]`;
-    node.tooltip = `Model: ${model.id}\nEndpoint: ${endpointName}\nContext Window: ${model.contextLength || 131072} tokens\nVision: ${model.supportsVision ? 'Yes' : 'No'}\nTools: ${model.supportsTools ? 'Yes' : 'No'}`;
+    node.tooltip = `Model: ${model.id}\nEndpoint: ${endpointName}\nType: ${isLocal ? 'Local Server' : 'Cloud API'}\nContext Window: ${model.contextLength || 131072} tokens\nVision: ${model.supportsVision ? 'Yes' : 'No'}\nTools: ${model.supportsTools ? 'Yes' : 'No'}`;
+    (node as any).model = model;
+    (node as any).endpointName = endpointName;
     return node;
   }
 }

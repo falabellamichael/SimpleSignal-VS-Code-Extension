@@ -1,7 +1,8 @@
 import * as os from 'os';
 import * as http from 'http';
 import { exec } from 'child_process';
-import { RAMDiagnostics, VRAMDiagnostics, ProcessMemoryInfo, LoadedAIModel } from './types';
+import { RAMDiagnostics, VRAMDiagnostics, ProcessMemoryInfo, LoadedAIModel, EndpointConfig } from './types';
+import { resolveEndpointApiKey, normalizeBaseUrl } from './utils';
 
 export class SystemDiagnostics {
   /**
@@ -394,6 +395,177 @@ export class SystemDiagnostics {
         resolve(!err);
       });
     });
+  }
+
+  /**
+   * Load/Warm up a model into GPU memory for local servers.
+   */
+  public static async loadModel(endpoint: EndpointConfig, modelId: string): Promise<{ success: boolean; message: string }> {
+    const urlLower = (endpoint.baseUrl || '').toLowerCase();
+    const nameLower = (endpoint.name || '').toLowerCase();
+    const apiKey = resolveEndpointApiKey(endpoint);
+    const baseUrl = normalizeBaseUrl(endpoint.baseUrl);
+
+    // 1. Ollama load (keep_alive: -1 loads model into memory indefinitely)
+    if (urlLower.includes(':11434') || nameLower.includes('ollama') || endpoint.protocol === 'ollama') {
+      try {
+        const url = `${baseUrl.includes('/api') ? baseUrl.replace(/\/api.*$/, '') : baseUrl}/api/generate`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: modelId, keep_alive: -1 }),
+        });
+        if (res.ok) {
+          return { success: true, message: `Loaded "${modelId}" into Ollama GPU memory.` };
+        }
+      } catch (e: any) {
+        return { success: false, message: e.message || 'Failed to load Ollama model' };
+      }
+    }
+
+    // 2. LM Studio load
+    if (urlLower.includes(':1234') || nameLower.includes('lm studio')) {
+      try {
+        const loadUrl = `${baseUrl}/models/load`;
+        const res = await fetch(loadUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+          },
+          body: JSON.stringify({ model: modelId }),
+        });
+        if (res.ok) {
+          return { success: true, message: `Loaded "${modelId}" into LM Studio memory.` };
+        }
+      } catch {}
+    }
+
+    // 3. Lemonade Server load
+    if (urlLower.includes(':9000') || urlLower.includes(':13305') || nameLower.includes('lemonade')) {
+      try {
+        const loadUrl = `${baseUrl}/models/load`;
+        const res = await fetch(loadUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+          },
+          body: JSON.stringify({ model: modelId }),
+        });
+        if (res.ok) {
+          return { success: true, message: `Loaded "${modelId}" into Lemonade memory.` };
+        }
+      } catch {}
+    }
+
+    // 4. General OpenAI compatible warm-up load (1 token completion)
+    try {
+      let chatUrl = baseUrl;
+      if (!chatUrl.endsWith('/chat/completions')) {
+        chatUrl = `${baseUrl}/chat/completions`;
+      }
+      const res = await fetch(chatUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [{ role: 'user', content: 'hello' }],
+          max_tokens: 1,
+        }),
+      });
+      if (res.ok) {
+        return { success: true, message: `Warmed up & loaded "${modelId}" into active memory.` };
+      }
+      const err = await res.text().catch(() => '');
+      return { success: false, message: `HTTP ${res.status}: ${err}` };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Load failed' };
+    }
+  }
+
+  /**
+   * Unload/Eject a model from GPU/RAM for local servers.
+   */
+  public static async unloadModel(endpoint: EndpointConfig, modelId: string): Promise<{ success: boolean; message: string }> {
+    const urlLower = (endpoint.baseUrl || '').toLowerCase();
+    const nameLower = (endpoint.name || '').toLowerCase();
+    const apiKey = resolveEndpointApiKey(endpoint);
+    const baseUrl = normalizeBaseUrl(endpoint.baseUrl);
+
+    // 1. Ollama unload (keep_alive: 0 unloads model immediately)
+    if (urlLower.includes(':11434') || nameLower.includes('ollama') || endpoint.protocol === 'ollama') {
+      try {
+        const url = `${baseUrl.includes('/api') ? baseUrl.replace(/\/api.*$/, '') : baseUrl}/api/generate`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: modelId, keep_alive: 0 }),
+        });
+        if (res.ok) {
+          return { success: true, message: `Unloaded "${modelId}" from Ollama GPU memory.` };
+        }
+      } catch (e: any) {
+        return { success: false, message: e.message || 'Failed to unload Ollama model' };
+      }
+    }
+
+    // 2. LM Studio unload
+    if (urlLower.includes(':1234') || nameLower.includes('lm studio')) {
+      try {
+        const unloadUrl = `${baseUrl}/models/unload`;
+        const res = await fetch(unloadUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+          },
+          body: JSON.stringify({ model: modelId }),
+        });
+        if (res.ok) {
+          return { success: true, message: `Unloaded "${modelId}" from LM Studio.` };
+        }
+      } catch {}
+    }
+
+    // 3. Lemonade Server unload
+    if (urlLower.includes(':9000') || urlLower.includes(':13305') || nameLower.includes('lemonade')) {
+      try {
+        const unloadUrl = `${baseUrl}/models/unload`;
+        const res = await fetch(unloadUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+          },
+          body: JSON.stringify({ model: modelId }),
+        });
+        if (res.ok) {
+          return { success: true, message: `Unloaded "${modelId}" from Lemonade server.` };
+        }
+      } catch {}
+    }
+
+    // 4. Try generic /models/unload
+    try {
+      const unloadUrl = `${baseUrl}/models/unload`;
+      const res = await fetch(unloadUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+        body: JSON.stringify({ model: modelId }),
+      });
+      if (res.ok) {
+        return { success: true, message: `Unloaded "${modelId}" from server memory.` };
+      }
+    } catch {}
+
+    return { success: false, message: `Unload not natively supported by this endpoint.` };
   }
 
   /**
