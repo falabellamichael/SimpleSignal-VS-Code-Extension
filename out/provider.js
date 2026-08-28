@@ -126,34 +126,33 @@ class SimpleSignalChatProvider {
         const defaultModel = config.get('defaultModel', '');
         let targetEndpoint;
         let actualModelId = modelId;
-        // Handle dynamic active model ID
-        if (modelId === 'simplesignal-active' || modelId === 'default' || modelId === 'active') {
-            if (defaultModel && defaultModel.includes(':::')) {
-                const parts = defaultModel.split(':::');
-                targetEndpoint = endpoints.find((e) => e.name.toLowerCase() === parts[0].toLowerCase());
+        // Prioritize the actively selected model from SimpleSignal Hub
+        if (defaultModel && defaultModel.includes(':::')) {
+            const parts = defaultModel.split(':::');
+            const activeEp = endpoints.find((e) => e.name.toLowerCase() === parts[0].toLowerCase());
+            if (activeEp) {
+                targetEndpoint = activeEp;
                 actualModelId = parts.slice(1).join(':::');
             }
         }
-        else if (modelId.includes(':::')) {
-            const parts = modelId.split(':::');
-            const epName = parts[0];
-            actualModelId = parts.slice(1).join(':::');
-            targetEndpoint = endpoints.find((e) => e.name === epName);
-        }
+        // Fallback: If no active model was selected in Hub, resolve from the model requested by VS Code
         if (!targetEndpoint) {
-            for (const ep of endpoints) {
-                const match = (ep.models || []).find((m) => m.id === modelId || m.id.toLowerCase() === modelId.toLowerCase());
-                if (match) {
-                    targetEndpoint = ep;
-                    actualModelId = match.id;
-                    break;
+            if (modelId.includes(':::')) {
+                const parts = modelId.split(':::');
+                const epName = parts[0];
+                actualModelId = parts.slice(1).join(':::');
+                targetEndpoint = endpoints.find((e) => e.name === epName);
+            }
+            if (!targetEndpoint) {
+                for (const ep of endpoints) {
+                    const match = (ep.models || []).find((m) => m.id === modelId || m.id.toLowerCase() === modelId.toLowerCase());
+                    if (match) {
+                        targetEndpoint = ep;
+                        actualModelId = match.id;
+                        break;
+                    }
                 }
             }
-        }
-        if (!targetEndpoint && defaultModel && defaultModel.includes(':::')) {
-            const parts = defaultModel.split(':::');
-            targetEndpoint = endpoints.find((e) => e.name.toLowerCase() === parts[0].toLowerCase());
-            actualModelId = parts.slice(1).join(':::');
         }
         if (!targetEndpoint && endpoints.length > 0) {
             targetEndpoint = endpoints[0];
