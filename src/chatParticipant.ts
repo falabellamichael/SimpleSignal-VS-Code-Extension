@@ -249,8 +249,8 @@ export class SimpleSignalChatParticipant {
 
           const reader = (res.body as any).getReader();
           const decoder = new TextDecoder();
-          const openThinkingTag = '<details open style="margin: 8px 0 14px 0; border: 1px solid rgba(255, 230, 0, 0.25); border-radius: 6px; background: rgba(255, 230, 0, 0.03); overflow: hidden;">\n<summary style="cursor: pointer; padding: 6px 10px; font-weight: 600; opacity: 0.9; user-select: none;">🧠 <b>Thought Process</b> <span style="opacity: 0.55; font-size: 0.85em; font-weight: normal;">(click to toggle)</span></summary>\n<div style="max-height: 220px; overflow-y: auto; padding: 10px 14px; border-top: 1px solid rgba(255, 230, 0, 0.15); font-size: 0.92em; line-height: 1.55; opacity: 0.85;">\n\n';
-          const closeThinkingTag = '\n\n</div>\n</details>\n\n';
+          const openThinkingTag = '<details open>\n<summary>🧠 <b>Thought Process</b></summary>\n\n> ';
+          const closeThinkingTag = '\n\n</details>\n\n';
           let buffer = '';
 
           while (true) {
@@ -285,7 +285,8 @@ export class SimpleSignalChatParticipant {
                     stream.markdown(openThinkingTag);
                     inThinkingBlock = true;
                   }
-                  stream.markdown(delta.reasoning_content);
+                  const formatted = delta.reasoning_content.replace(/\n/g, '\n> ');
+                  stream.markdown(formatted);
                   ModelTelemetryTracker.updateChunk(stats.id, delta.reasoning_content, true);
                 }
 
@@ -303,6 +304,8 @@ export class SimpleSignalChatParticipant {
                   if (content.includes('</think>')) {
                     inThinkingBlock = false;
                     content = content.replace(/<\/think>/g, closeThinkingTag);
+                  } else if (inThinkingBlock) {
+                    content = content.replace(/\n/g, '\n> ');
                   }
 
                   fullCompletion += content;
