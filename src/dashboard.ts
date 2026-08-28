@@ -119,6 +119,9 @@ export class SimpleSignalDashboard {
               await vscode.commands.executeCommand('simplesignal.endpoint.configure', { name: message.name });
               this._update();
               break;
+            case 'manageEndpointCopyJson':
+              await vscode.commands.executeCommand('simplesignal.endpoint.copyJson', { name: message.name });
+              break;
             case 'manageEndpointDelete':
               await vscode.commands.executeCommand('simplesignal.endpoint.delete', { name: message.name });
               this._update();
@@ -1517,17 +1520,10 @@ export class SimpleSignalDashboard {
           </div>
           <div class="card-url">${ep.baseUrl}</div>
 
-          <!-- Endpoint Management Action Toolbar -->
-          <div class="endpoint-toolbar" style="display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; margin-bottom: 10px;">
-            <button class="card-btn btn-ep-action" data-ep-action="apiKey" data-endpoint="${ep.name}" title="Set or update API key">${ep.apiKey ? '🔑 Key: ••••' + (ep.apiKey.length > 4 ? ep.apiKey.slice(-4) : '') : '🔑 Set Key'}</button>
-            <button class="card-btn btn-ep-action" data-ep-action="url" data-endpoint="${ep.name}" title="Edit base URL">🌐 URL</button>
-            <button class="card-btn btn-ep-action" data-ep-action="fetch" data-endpoint="${ep.name}" title="Auto-fetch and sync models">⚡ Sync</button>
-            <button class="card-btn btn-ep-action" data-ep-action="addModel" data-endpoint="${ep.name}" title="Add custom model ID">➕ Model</button>
-            <button class="card-btn btn-ep-action" data-ep-action="test" data-endpoint="${ep.name}" title="Test ping & latency">🔄 Ping</button>
-            <button class="card-btn btn-ep-action" data-ep-action="bench" data-endpoint="${ep.name}" title="Benchmark this endpoint">🚀 Bench</button>
-            <button class="card-btn btn-ep-action" data-ep-action="proto" data-endpoint="${ep.name}" title="Configure protocol">⚙️ Config</button>
-            <button class="card-btn btn-ep-action" data-ep-action="toggle" data-endpoint="${ep.name}" title="Toggle active / disabled">${isEnabled ? '🔌 Active' : '⚪ Disabled'}</button>
-            <button class="card-btn btn-ep-action btn-danger" data-ep-action="delete" data-endpoint="${ep.name}" title="Delete endpoint">🗑️</button>
+          <!-- Compact Endpoint Toolbar with Options... Dropdown -->
+          <div class="endpoint-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; margin-bottom: 10px;">
+            <button class="card-btn btn-ep-action" data-ep-action="fetch" data-endpoint="${ep.name}" title="Sync and auto-fetch models">⚡ Sync</button>
+            <button class="card-btn btn-ep-options" data-endpoint="${ep.name}" data-apikey="${ep.apiKey || ''}" data-url="${ep.baseUrl}" data-enabled="${isEnabled}" data-proto="${ep.protocol || 'openai'}" title="Manage endpoint options">⚙️ Options ▾</button>
           </div>
           
           <div class="accordion-toggle" title="Click to expand/collapse models dropdown">
@@ -1825,6 +1821,11 @@ Waiting to run performance test...
     <div id="modelMenuItems"></div>
   </div>
 
+  <div id="endpointActionMenu" class="model-action-menu">
+    <div id="epMenuTitle" class="model-menu-title">Endpoint Options</div>
+    <div id="epMenuItems"></div>
+  </div>
+
   <script>
     (function() {
       let vscode;
@@ -2092,14 +2093,122 @@ Waiting to run performance test...
           if (menuEl) menuEl.style.display = 'none';
         }
 
+        // Setup "Options..." Endpoint Action Dropdown Menu
+        const epMenuEl = document.getElementById('endpointActionMenu');
+        const epMenuTitleEl = document.getElementById('epMenuTitle');
+        const epMenuItemsEl = document.getElementById('epMenuItems');
+
+        function closeEpMenu() {
+          if (epMenuEl) epMenuEl.style.display = 'none';
+        }
+
         document.addEventListener('click', function(e) {
           if (menuEl && !menuEl.contains(e.target) && !e.target.classList.contains('btn-dots')) {
             closeModelMenu();
           }
+          if (epMenuEl && !epMenuEl.contains(e.target) && !e.target.classList.contains('btn-ep-options')) {
+            closeEpMenu();
+          }
         });
 
         document.addEventListener('keydown', function(e) {
-          if (e.key === 'Escape') closeModelMenu();
+          if (e.key === 'Escape') {
+            closeModelMenu();
+            closeEpMenu();
+          }
+        });
+
+        // Wire "Options..." Dropdown on each Endpoint Card
+        document.querySelectorAll('.btn-ep-options').forEach(function(btn) {
+          btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            closeModelMenu();
+
+            const ep = this.getAttribute('data-endpoint') || '';
+            const apiKey = this.getAttribute('data-apikey') || '';
+            const url = this.getAttribute('data-url') || '';
+            const isEnabled = this.getAttribute('data-enabled') === 'true';
+            const proto = this.getAttribute('data-proto') || 'openai';
+
+            if (!epMenuEl || !epMenuTitleEl || !epMenuItemsEl) return;
+
+            epMenuTitleEl.innerText = ep + ' • Options';
+            epMenuItemsEl.innerHTML = '';
+
+            function addOptionItem(icon, label, onClick, isDanger) {
+              const item = document.createElement('div');
+              item.className = 'model-menu-item' + (isDanger ? ' danger' : '');
+              item.innerHTML = '<span>' + icon + '</span> <span>' + label + '</span>';
+              item.addEventListener('click', function() {
+                onClick();
+                closeEpMenu();
+              });
+              epMenuItemsEl.appendChild(item);
+            }
+
+            function addDivider() {
+              const d = document.createElement('div');
+              d.className = 'model-menu-divider';
+              epMenuItemsEl.appendChild(d);
+            }
+
+            const keyDisplay = apiKey ? '••••••••' + (apiKey.length > 4 ? apiKey.slice(-4) : '') : 'None';
+            addOptionItem('🔑', '<strong>API Key:</strong> <span style="opacity:0.75;">' + keyDisplay + '</span>', function() {
+              post('manageEndpointApiKey', { name: ep });
+            });
+
+            addOptionItem('🌐', '<strong>Base URL:</strong> <span style="opacity:0.75;">' + url + '</span>', function() {
+              post('manageEndpointUrl', { name: ep });
+            });
+
+            addOptionItem('⚡', '<strong>Sync & Refresh</strong> Models', function() {
+              post('manageEndpointFetch', { name: ep });
+            });
+
+            addOptionItem('➕', '<strong>Add Custom Model</strong> ID', function() {
+              post('manageEndpointAddModel', { name: ep });
+            });
+
+            addOptionItem('🔄', '<strong>Test Ping</strong> & Latency', function() {
+              post('testEndpoint', { name: ep });
+            });
+
+            addOptionItem('🚀', '<strong>Run Speed Benchmark</strong>', function() {
+              post('manageEndpointBench', { name: ep });
+            });
+
+            addOptionItem('⚙️', '<strong>Protocol:</strong> <span style="opacity:0.75;">' + proto + '</span>', function() {
+              post('manageEndpointProto', { name: ep });
+            });
+
+            addOptionItem('🔌', isEnabled ? '<strong>Disable</strong> Endpoint' : '<strong>Enable</strong> Endpoint', function() {
+              post('toggleEndpoint', { name: ep });
+            });
+
+            addOptionItem('📋', '<strong>Copy Config JSON</strong>', function() {
+              post('manageEndpointCopyJson', { name: ep });
+            });
+
+            addDivider();
+
+            addOptionItem('🗑️', '<strong>Delete Endpoint</strong>', function() {
+              post('manageEndpointDelete', { name: ep });
+            }, true);
+
+            const rect = this.getBoundingClientRect();
+            epMenuEl.style.display = 'block';
+
+            let top = rect.bottom + 4;
+            let left = rect.left;
+            if (left + 240 > window.innerWidth) {
+              left = window.innerWidth - 250;
+            }
+            if (top + 360 > window.innerHeight) {
+              top = rect.top - 360;
+            }
+            epMenuEl.style.top = Math.max(10, top) + 'px';
+            epMenuEl.style.left = Math.max(10, left) + 'px';
+          });
         });
 
         document.querySelectorAll('.btn-dots').forEach(function(btn) {
