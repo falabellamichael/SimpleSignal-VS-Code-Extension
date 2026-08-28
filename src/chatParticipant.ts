@@ -249,8 +249,8 @@ export class SimpleSignalChatParticipant {
 
           const reader = (res.body as any).getReader();
           const decoder = new TextDecoder();
-          const openThinkingTag = '> 🧠 **Thought Process**\n> \n> *💭 Reasoning:*\n> ';
-          const closeThinkingTag = '\n> \n> *— end of thought —*\n\n';
+          const openThinkingTag = '🧠 **Thought Process**\n```thinking\n';
+          const closeThinkingTag = '\n```\n\n';
           let buffer = '';
 
           while (true) {
@@ -285,8 +285,7 @@ export class SimpleSignalChatParticipant {
                     stream.markdown(openThinkingTag);
                     inThinkingBlock = true;
                   }
-                  const formatted = delta.reasoning_content.replace(/\n/g, '\n> ');
-                  stream.markdown(formatted);
+                  stream.markdown(delta.reasoning_content);
                   ModelTelemetryTracker.updateChunk(stats.id, delta.reasoning_content, true);
                 }
 
@@ -304,8 +303,6 @@ export class SimpleSignalChatParticipant {
                   if (content.includes('</think>')) {
                     inThinkingBlock = false;
                     content = content.replace(/<\/think>/g, closeThinkingTag);
-                  } else if (inThinkingBlock) {
-                    content = content.replace(/\n/g, '\n> ');
                   }
 
                   fullCompletion += content;

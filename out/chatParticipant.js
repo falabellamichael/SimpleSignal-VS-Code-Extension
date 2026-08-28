@@ -250,8 +250,8 @@ class SimpleSignalChatParticipant {
                     }
                     const reader = res.body.getReader();
                     const decoder = new TextDecoder();
-                    const openThinkingTag = '> 🧠 **Thought Process**\n> \n> *💭 Reasoning:*\n> ';
-                    const closeThinkingTag = '\n> \n> *— end of thought —*\n\n';
+                    const openThinkingTag = '🧠 **Thought Process**\n```thinking\n';
+                    const closeThinkingTag = '\n```\n\n';
                     let buffer = '';
                     while (true) {
                         if (token.isCancellationRequested) {
@@ -284,8 +284,7 @@ class SimpleSignalChatParticipant {
                                         stream.markdown(openThinkingTag);
                                         inThinkingBlock = true;
                                     }
-                                    const formatted = delta.reasoning_content.replace(/\n/g, '\n> ');
-                                    stream.markdown(formatted);
+                                    stream.markdown(delta.reasoning_content);
                                     telemetryTracker_1.ModelTelemetryTracker.updateChunk(stats.id, delta.reasoning_content, true);
                                 }
                                 let content = delta.content || choice.text || '';
@@ -301,9 +300,6 @@ class SimpleSignalChatParticipant {
                                     if (content.includes('</think>')) {
                                         inThinkingBlock = false;
                                         content = content.replace(/<\/think>/g, closeThinkingTag);
-                                    }
-                                    else if (inThinkingBlock) {
-                                        content = content.replace(/\n/g, '\n> ');
                                     }
                                     fullCompletion += content;
                                     completionTokens += Math.max(1, Math.ceil(content.length / 3.8));

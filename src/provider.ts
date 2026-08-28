@@ -286,16 +286,15 @@ export class SimpleSignalChatProvider implements vscode.LanguageModelChatProvide
               const delta = choice.delta;
               if (!delta) continue;
 
-              const openThinkingTag = '> 🧠 **Thought Process**\n> \n> *💭 Reasoning:*\n> ';
-              const closeThinkingTag = '\n> \n> *— end of thought —*\n\n';
+              const openThinkingTag = '🧠 **Thought Process**\n```thinking\n';
+              const closeThinkingTag = '\n```\n\n';
 
               if (delta.reasoning_content) {
                 if (!inThinkingBlock) {
                   progress.report(new vscode.LanguageModelTextPart(openThinkingTag));
                   inThinkingBlock = true;
                 }
-                const formatted = delta.reasoning_content.replace(/\n/g, '\n> ');
-                progress.report(new vscode.LanguageModelTextPart(formatted));
+                progress.report(new vscode.LanguageModelTextPart(delta.reasoning_content));
                 ModelTelemetryTracker.updateChunk(telemetrySession.id, delta.reasoning_content, true);
               }
 
@@ -313,8 +312,6 @@ export class SimpleSignalChatProvider implements vscode.LanguageModelChatProvide
                 if (text.includes('</think>')) {
                   inThinkingBlock = false;
                   text = text.replace(/<\/think>/g, closeThinkingTag);
-                } else if (inThinkingBlock) {
-                  text = text.replace(/\n/g, '\n> ');
                 }
 
                 progress.report(new vscode.LanguageModelTextPart(text));

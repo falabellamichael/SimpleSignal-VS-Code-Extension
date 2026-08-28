@@ -277,15 +277,14 @@ class SimpleSignalChatProvider {
                             const delta = choice.delta;
                             if (!delta)
                                 continue;
-                            const openThinkingTag = '> 🧠 **Thought Process**\n> \n> *💭 Reasoning:*\n> ';
-                            const closeThinkingTag = '\n> \n> *— end of thought —*\n\n';
+                            const openThinkingTag = '🧠 **Thought Process**\n```thinking\n';
+                            const closeThinkingTag = '\n```\n\n';
                             if (delta.reasoning_content) {
                                 if (!inThinkingBlock) {
                                     progress.report(new vscode.LanguageModelTextPart(openThinkingTag));
                                     inThinkingBlock = true;
                                 }
-                                const formatted = delta.reasoning_content.replace(/\n/g, '\n> ');
-                                progress.report(new vscode.LanguageModelTextPart(formatted));
+                                progress.report(new vscode.LanguageModelTextPart(delta.reasoning_content));
                                 telemetryTracker_1.ModelTelemetryTracker.updateChunk(telemetrySession.id, delta.reasoning_content, true);
                             }
                             if (delta.content) {
@@ -301,9 +300,6 @@ class SimpleSignalChatProvider {
                                 if (text.includes('</think>')) {
                                     inThinkingBlock = false;
                                     text = text.replace(/<\/think>/g, closeThinkingTag);
-                                }
-                                else if (inThinkingBlock) {
-                                    text = text.replace(/\n/g, '\n> ');
                                 }
                                 progress.report(new vscode.LanguageModelTextPart(text));
                                 telemetryTracker_1.ModelTelemetryTracker.updateChunk(telemetrySession.id, delta.content, false);
