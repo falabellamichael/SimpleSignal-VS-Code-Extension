@@ -41,6 +41,29 @@
     "onStartupFinished"
   ],
   "contributes": {
+    "chatParticipants": [
+      {
+        "id": "simplesignal.participant",
+        "name": "simplesignal",
+        "fullName": "SimpleSignal AI",
+        "description": "Universal local & cloud AI engine with dynamic model switching (/switch, /models, /status)",
+        "isDefault": true,
+        "commands": [
+          {
+            "name": "switch",
+            "description": "Switch active model (e.g. /switch deepseek or /switch qwen)"
+          },
+          {
+            "name": "models",
+            "description": "List all available AI models with one-click buttons to activate"
+          },
+          {
+            "name": "status",
+            "description": "Show currently active model and telemetry stats"
+          }
+        ]
+      }
+    ],
     "languageModelChatProviders": [
       {
         "vendor": "simplesignal",

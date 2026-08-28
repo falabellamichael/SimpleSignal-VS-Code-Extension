@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { SimpleSignalChatProvider } from './provider';
+import { SimpleSignalChatParticipant } from './chatParticipant';
 import { ModelFetcher } from './modelFetcher';
 import { SimpleSignalTreeDataProvider } from './treeProvider';
 import { SimpleSignalDashboard } from './dashboard';
@@ -32,6 +33,16 @@ export function activate(context: vscode.ExtensionContext) {
   statusBarItem.tooltip = 'SimpleSignal: Click to manage AI models & endpoints';
   context.subscriptions.push(statusBarItem);
   updateStatusBar(statusBarItem);
+
+  // Register First-Class VS Code Chat Participant (@simplesignal)
+  const chatParticipant = SimpleSignalChatParticipant.register(
+    context,
+    provider,
+    treeDataProvider,
+    statusBarItem,
+    outputChannel
+  );
+  context.subscriptions.push(chatParticipant);
 
   // Hook up Dashboard state changes to Sidebar TreeDataProvider, Provider, and StatusBar
   SimpleSignalDashboard.onModelSelectionChanged = (endpointName, modelId) => {

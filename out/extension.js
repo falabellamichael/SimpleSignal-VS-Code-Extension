@@ -37,6 +37,7 @@ exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
 const provider_1 = require("./provider");
+const chatParticipant_1 = require("./chatParticipant");
 const modelFetcher_1 = require("./modelFetcher");
 const treeProvider_1 = require("./treeProvider");
 const dashboard_1 = require("./dashboard");
@@ -63,6 +64,9 @@ function activate(context) {
     statusBarItem.tooltip = 'SimpleSignal: Click to manage AI models & endpoints';
     context.subscriptions.push(statusBarItem);
     updateStatusBar(statusBarItem);
+    // Register First-Class VS Code Chat Participant (@simplesignal)
+    const chatParticipant = chatParticipant_1.SimpleSignalChatParticipant.register(context, provider, treeDataProvider, statusBarItem, outputChannel);
+    context.subscriptions.push(chatParticipant);
     // Hook up Dashboard state changes to Sidebar TreeDataProvider, Provider, and StatusBar
     dashboard_1.SimpleSignalDashboard.onModelSelectionChanged = (endpointName, modelId) => {
         treeDataProvider.setSelectedModel(endpointName, modelId);

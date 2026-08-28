@@ -1407,6 +1407,12 @@ export class SimpleSignalDashboard {
       <p>Universal AI orchestration, real-time message telemetry, speed benchmarks & hardware diagnostics</p>
     </div>
     <div class="hero-stats">
+      <div class="stat-box" style="min-width: 140px; border-color: var(--neon-accent); background: rgba(255, 230, 0, 0.08);">
+        <div class="stat-value" id="heroActiveModelLabel" style="font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px;">
+          ${SimpleSignalDashboard.selectedModel ? SimpleSignalDashboard.selectedModel.modelId : 'None'}
+        </div>
+        <div class="stat-label" style="color: var(--neon-accent);">✨ Active Model</div>
+      </div>
       <div class="stat-box">
         <div class="stat-value">${endpoints.length}</div>
         <div class="stat-label">Endpoints</div>
@@ -2222,6 +2228,12 @@ Waiting to run performance test...
             badgeContainer.innerHTML = html;
           }
         });
+
+        const heroActiveLabel = document.getElementById('heroActiveModelLabel');
+        if (heroActiveLabel) {
+          heroActiveLabel.innerText = sel && sel.modelId ? sel.modelId : 'None';
+          heroActiveLabel.title = sel && sel.modelId ? (sel.modelId + ' [' + (sel.endpointName || '') + ']') : 'No model selected';
+        }
       }
 
       function startBenchmark() {
