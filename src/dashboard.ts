@@ -511,20 +511,25 @@ export class SimpleSignalDashboard {
   <title>SimpleSignal Hub</title>
   <style>
     :root {
-      --neon-accent: var(--vscode-focusBorder, #ffe600);
-      --neon-glow: rgba(255, 230, 0, 0.28);
-      --neon-cyan: #00e5ff;
-      --neon-cyan-glow: rgba(0, 229, 255, 0.25);
-      --card-bg: var(--vscode-editor-background, #121212);
-      --card-border: var(--vscode-widget-border, rgba(255, 255, 255, 0.12));
-      --text-color: var(--vscode-editor-foreground, #e0e0e0);
+      --neon-accent: var(--vscode-focusBorder, var(--vscode-button-background, #ffe600));
+      --neon-glow: rgba(255, 230, 0, 0.2);
+      --neon-cyan: var(--vscode-charts-blue, #00e5ff);
+      --neon-cyan-glow: rgba(0, 229, 255, 0.2);
+      --card-bg: var(--vscode-sideBar-background, var(--vscode-editor-background));
+      --card-sub-bg: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.08));
+      --card-border: var(--vscode-panel-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.2)));
+      --text-color: var(--vscode-editor-foreground, inherit);
       --muted-text: var(--vscode-descriptionForeground, #888888);
-      --badge-bg: var(--vscode-badge-background, #ffe600);
-      --badge-fg: var(--vscode-badge-foreground, #000000);
-      --green: #4caf50;
-      --orange: #ff9800;
-      --blue: #2196f3;
-      --red: #ff5252;
+      --badge-bg: var(--vscode-badge-background, var(--vscode-button-background, #ffe600));
+      --badge-fg: var(--vscode-badge-foreground, var(--vscode-button-foreground, #000000));
+      --input-bg: var(--vscode-input-background, var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.08)));
+      --input-border: var(--vscode-input-border, var(--card-border));
+      --hover-bg: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.12));
+      --active-bg: var(--vscode-list-activeSelectionBackground, rgba(128, 128, 128, 0.2));
+      --green: var(--vscode-charts-green, #4caf50);
+      --orange: var(--vscode-charts-orange, #ff9800);
+      --blue: var(--vscode-charts-blue, #2196f3);
+      --red: var(--vscode-charts-red, #ff5252);
     }
 
     * { box-sizing: border-box; }
@@ -532,7 +537,7 @@ export class SimpleSignalDashboard {
     body {
       background-color: var(--vscode-editor-background);
       color: var(--text-color);
-      font-family: var(--vscode-font-family, 'Segoe UI', system-ui, sans-serif);
+      font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif);
       margin: 0;
       padding: 20px 24px;
       line-height: 1.5;
@@ -543,10 +548,10 @@ export class SimpleSignalDashboard {
       justify-content: space-between;
       align-items: center;
       padding: 18px 24px;
-      background: linear-gradient(135deg, rgba(255, 230, 0, 0.08) 0%, rgba(0, 0, 0, 0.45) 100%);
+      background: var(--card-bg);
       border: 1px solid var(--neon-accent);
       border-radius: 12px;
-      box-shadow: 0 4px 20px var(--neon-glow);
+      box-shadow: 0 2px 12px var(--neon-glow);
       margin-bottom: 20px;
     }
 
@@ -572,7 +577,7 @@ export class SimpleSignalDashboard {
     }
 
     .stat-box {
-      background: rgba(0, 0, 0, 0.4);
+      background: var(--input-bg);
       border: 1px solid var(--card-border);
       border-radius: 8px;
       padding: 6px 14px;
