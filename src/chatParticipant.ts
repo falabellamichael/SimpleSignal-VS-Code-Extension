@@ -249,8 +249,8 @@ export class SimpleSignalChatParticipant {
 
           const reader = (res.body as any).getReader();
           const decoder = new TextDecoder();
-          const openThinkingTag = '<details open>\n<summary>🧠 <b>Thought Process</b></summary>\n\n> ';
-          const closeThinkingTag = '\n\n</details>\n\n';
+          const openThinkingTag = '<details open>\n<summary>🧠 <b>Thought Process</b> <sub><i>(click to toggle)</i></sub></summary>\n\n> <sub><i>💭 Reasoning:</i></sub>\n> ';
+          const closeThinkingTag = '\n> \n> <sub><i>— end of thought —</i></sub>\n\n</details>\n\n';
           let buffer = '';
 
           while (true) {

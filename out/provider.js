@@ -277,8 +277,8 @@ class SimpleSignalChatProvider {
                             const delta = choice.delta;
                             if (!delta)
                                 continue;
-                            const openThinkingTag = '<details open>\n<summary>🧠 <b>Thought Process</b></summary>\n\n> ';
-                            const closeThinkingTag = '\n\n</details>\n\n';
+                            const openThinkingTag = '<details open>\n<summary>🧠 <b>Thought Process</b> <sub><i>(click to toggle)</i></sub></summary>\n\n> <sub><i>💭 Reasoning:</i></sub>\n> ';
+                            const closeThinkingTag = '\n> \n> <sub><i>— end of thought —</i></sub>\n\n</details>\n\n';
                             if (delta.reasoning_content) {
                                 if (!inThinkingBlock) {
                                     progress.report(new vscode.LanguageModelTextPart(openThinkingTag));
