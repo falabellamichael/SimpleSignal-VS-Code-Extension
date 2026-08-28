@@ -94,10 +94,38 @@ export class SimpleSignalDashboard {
               await this.toggleEndpoint(message.name);
               break;
             case 'testEndpoint':
-              await this.testEndpoint(message.name);
+              await vscode.commands.executeCommand('simplesignal.endpoint.testConnection', { name: message.name });
+              break;
+            case 'manageEndpointApiKey':
+              await vscode.commands.executeCommand('simplesignal.endpoint.setApiKey', { name: message.name });
+              this._update();
+              break;
+            case 'manageEndpointUrl':
+              await vscode.commands.executeCommand('simplesignal.endpoint.editUrl', { name: message.name });
+              this._update();
+              break;
+            case 'manageEndpointFetch':
+              await vscode.commands.executeCommand('simplesignal.endpoint.fetchModels', { name: message.name });
+              this._update();
+              break;
+            case 'manageEndpointAddModel':
+              await vscode.commands.executeCommand('simplesignal.endpoint.addModel', { name: message.name });
+              this._update();
+              break;
+            case 'manageEndpointBench':
+              await vscode.commands.executeCommand('simplesignal.endpoint.benchmark', { name: message.name });
+              break;
+            case 'manageEndpointProto':
+              await vscode.commands.executeCommand('simplesignal.endpoint.configure', { name: message.name });
+              this._update();
+              break;
+            case 'manageEndpointDelete':
+              await vscode.commands.executeCommand('simplesignal.endpoint.delete', { name: message.name });
+              this._update();
               break;
             case 'retryEndpoint':
-              await this.testEndpoint(message.name);
+              await vscode.commands.executeCommand('simplesignal.endpoint.fetchModels', { name: message.name });
+              this._update();
               break;
             case 'retryConnections':
               await vscode.commands.executeCommand('simplesignal.autoFetchModels');
@@ -1488,6 +1516,19 @@ export class SimpleSignalDashboard {
             <span class="badge ${ep.protocol === 'lemonade' ? 'badge-neon' : ep.protocol === 'ollama' ? 'badge-cyan' : ''}">${ep.protocol || 'openai'}</span>
           </div>
           <div class="card-url">${ep.baseUrl}</div>
+
+          <!-- Endpoint Management Action Toolbar -->
+          <div class="endpoint-toolbar" style="display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; margin-bottom: 10px;">
+            <button class="card-btn btn-ep-action" data-ep-action="apiKey" data-endpoint="${ep.name}" title="Set or update API key">${ep.apiKey ? '🔑 Key: ••••' + (ep.apiKey.length > 4 ? ep.apiKey.slice(-4) : '') : '🔑 Set Key'}</button>
+            <button class="card-btn btn-ep-action" data-ep-action="url" data-endpoint="${ep.name}" title="Edit base URL">🌐 URL</button>
+            <button class="card-btn btn-ep-action" data-ep-action="fetch" data-endpoint="${ep.name}" title="Auto-fetch and sync models">⚡ Sync</button>
+            <button class="card-btn btn-ep-action" data-ep-action="addModel" data-endpoint="${ep.name}" title="Add custom model ID">➕ Model</button>
+            <button class="card-btn btn-ep-action" data-ep-action="test" data-endpoint="${ep.name}" title="Test ping & latency">🔄 Ping</button>
+            <button class="card-btn btn-ep-action" data-ep-action="bench" data-endpoint="${ep.name}" title="Benchmark this endpoint">🚀 Bench</button>
+            <button class="card-btn btn-ep-action" data-ep-action="proto" data-endpoint="${ep.name}" title="Configure protocol">⚙️ Config</button>
+            <button class="card-btn btn-ep-action" data-ep-action="toggle" data-endpoint="${ep.name}" title="Toggle active / disabled">${isEnabled ? '🔌 Active' : '⚪ Disabled'}</button>
+            <button class="card-btn btn-ep-action btn-danger" data-ep-action="delete" data-endpoint="${ep.name}" title="Delete endpoint">🗑️</button>
+          </div>
           
           <div class="accordion-toggle" title="Click to expand/collapse models dropdown">
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -1532,16 +1573,9 @@ export class SimpleSignalDashboard {
                 </div>`;
                       })
                       .join('')
-                  : '<div style="color: var(--muted-text); font-size: 12px; padding: 6px;">No models fetched yet. Click "Auto-Fetch" or "Retry".</div>'
+                  : '<div style="color: var(--muted-text); font-size: 12px; padding: 6px;">No models fetched yet. Click "⚡ Sync" above to auto-fetch.</div>'
               }
             </div>
-          </div>
-
-
-          <div class="card-footer">
-            <button class="card-btn" data-action="test" data-endpoint="${ep.name}">🧪 Test</button>
-            <button class="card-btn" data-action="retry" data-endpoint="${ep.name}">🔄 Retry</button>
-            <button class="card-btn" data-action="toggle" data-endpoint="${ep.name}">${isEnabled ? 'Disable' : 'Enable'}</button>
           </div>
         </div>`;
         })
@@ -2004,8 +2038,38 @@ Waiting to run performance test...
           });
         }
 
-        // Endpoint card buttons (test / retry / toggle)
-        document.querySelectorAll('.card-btn').forEach(function(btn) {
+        // Endpoint management toolbar action buttons
+        document.querySelectorAll('.btn-ep-action').forEach(function(btn) {
+          btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const action = this.getAttribute('data-ep-action');
+            const ep = this.getAttribute('data-endpoint');
+            if (!ep) return;
+
+            if (action === 'apiKey') {
+              post('manageEndpointApiKey', { name: ep });
+            } else if (action === 'url') {
+              post('manageEndpointUrl', { name: ep });
+            } else if (action === 'fetch') {
+              post('manageEndpointFetch', { name: ep });
+            } else if (action === 'addModel') {
+              post('manageEndpointAddModel', { name: ep });
+            } else if (action === 'test') {
+              post('testEndpoint', { name: ep });
+            } else if (action === 'bench') {
+              post('manageEndpointBench', { name: ep });
+            } else if (action === 'proto') {
+              post('manageEndpointProto', { name: ep });
+            } else if (action === 'toggle') {
+              post('toggleEndpoint', { name: ep });
+            } else if (action === 'delete') {
+              post('manageEndpointDelete', { name: ep });
+            }
+          });
+        });
+
+        // Legacy / fallback endpoint card buttons
+        document.querySelectorAll('.card-btn:not(.btn-ep-action):not(.btn-dots)').forEach(function(btn) {
           btn.addEventListener('click', function(e) {
             const action = this.getAttribute('data-action');
             const ep = this.getAttribute('data-endpoint');

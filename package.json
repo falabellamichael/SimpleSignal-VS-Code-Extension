@@ -153,6 +153,56 @@
         "command": "simplesignal.selectModel",
         "title": "Select Model for VS Code Chat",
         "icon": "$(radio-tower)"
+      },
+      {
+        "command": "simplesignal.endpoint.setApiKey",
+        "title": "SimpleSignal: Set / Edit API Key",
+        "icon": "$(key)"
+      },
+      {
+        "command": "simplesignal.endpoint.editUrl",
+        "title": "SimpleSignal: Edit Base URL",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "simplesignal.endpoint.toggle",
+        "title": "SimpleSignal: Toggle Endpoint Status",
+        "icon": "$(pass-filled)"
+      },
+      {
+        "command": "simplesignal.endpoint.fetchModels",
+        "title": "SimpleSignal: Auto-Fetch Models for Endpoint",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "simplesignal.endpoint.addModel",
+        "title": "SimpleSignal: Add Custom Model to Endpoint",
+        "icon": "$(add)"
+      },
+      {
+        "command": "simplesignal.endpoint.testConnection",
+        "title": "SimpleSignal: Test Endpoint Connection & Latency",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "simplesignal.endpoint.benchmark",
+        "title": "SimpleSignal: Benchmark Endpoint",
+        "icon": "$(zap)"
+      },
+      {
+        "command": "simplesignal.endpoint.configure",
+        "title": "SimpleSignal: Configure Endpoint Protocol",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "simplesignal.endpoint.copyJson",
+        "title": "SimpleSignal: Copy Endpoint Config JSON",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "simplesignal.endpoint.delete",
+        "title": "SimpleSignal: Delete Endpoint",
+        "icon": "$(trash)"
       }
     ],
     "menus": {

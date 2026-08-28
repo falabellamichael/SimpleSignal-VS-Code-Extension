@@ -102,10 +102,139 @@ export class SimpleSignalTreeDataProvider implements vscode.TreeDataProvider<Tre
 
     if (element.contextValue === 'endpoint_item') {
       const ep: EndpointConfig = (element as any).endpoint;
+      const items: TreeItemNode[] = [];
+
+      // 1. API Key Management
+      const keyLabel = ep.apiKey ? `API Key: ••••••••${ep.apiKey.length > 4 ? ep.apiKey.slice(-4) : ''}` : 'API Key: None (Click to Set)';
+      const keyNode = new TreeItemNode(
+        keyLabel,
+        vscode.TreeItemCollapsibleState.None,
+        'endpoint_action',
+        new vscode.ThemeIcon('key', ep.apiKey ? new vscode.ThemeColor('charts.green') : new vscode.ThemeColor('charts.yellow'))
+      );
+      keyNode.tooltip = ep.apiKey ? `API Key configured: ••••••••${ep.apiKey.slice(-4)}\nClick to edit or clear` : 'No API key set. Click to add API key.';
+      keyNode.command = { command: 'simplesignal.endpoint.setApiKey', title: 'Set API Key', arguments: [ep] };
+      items.push(keyNode);
+
+      // 2. Base URL Management
+      const urlNode = new TreeItemNode(
+        `Base URL: ${ep.baseUrl}`,
+        vscode.TreeItemCollapsibleState.None,
+        'endpoint_action',
+        new vscode.ThemeIcon('globe', new vscode.ThemeColor('charts.blue'))
+      );
+      urlNode.tooltip = `Base URL: ${ep.baseUrl}\nClick to edit URL`;
+      urlNode.command = { command: 'simplesignal.endpoint.editUrl', title: 'Edit URL', arguments: [ep] };
+      items.push(urlNode);
+
+      // 3. Status Toggle
+      const isActive = ep.enabled !== false;
+      const statusNode = new TreeItemNode(
+        `Status: ${isActive ? 'Active (Enabled)' : 'Disabled'}`,
+        vscode.TreeItemCollapsibleState.None,
+        'endpoint_action',
+        isActive ? new vscode.ThemeIcon('pass-filled', new vscode.ThemeColor('testing.iconPassed')) : new vscode.ThemeIcon('circle-slash', new vscode.ThemeColor('testing.iconFailed'))
+      );
+      statusNode.tooltip = `Click to ${isActive ? 'Disable' : 'Enable'} this endpoint`;
+      statusNode.command = { command: 'simplesignal.endpoint.toggle', title: 'Toggle Status', arguments: [ep] };
+      items.push(statusNode);
+
+      // 4. Auto-Fetch Models
+      const fetchNode = new TreeItemNode(
+        'Auto-Fetch / Refresh Models',
+        vscode.TreeItemCollapsibleState.None,
+        'endpoint_action',
+        new vscode.ThemeIcon('sync', new vscode.ThemeColor('charts.purple'))
+      );
+      fetchNode.tooltip = `Query ${ep.baseUrl} and update model list`;
+      fetchNode.command = { command: 'simplesignal.endpoint.fetchModels', title: 'Fetch Models', arguments: [ep] };
+      items.push(fetchNode);
+
+      // 5. Test Connection & Ping
+      const testNode = new TreeItemNode(
+        'Test Connection & Latency',
+        vscode.TreeItemCollapsibleState.None,
+        'endpoint_action',
+        new vscode.ThemeIcon('pulse', new vscode.ThemeColor('charts.yellow'))
+      );
+      testNode.tooltip = `Ping ${ep.baseUrl} and measure latency`;
+      testNode.command = { command: 'simplesignal.endpoint.testConnection', title: 'Test Connection', arguments: [ep] };
+      items.push(testNode);
+
+      // 6. Add Custom Model
+      const addModelNode = new TreeItemNode(
+        'Add Custom Model',
+        vscode.TreeItemCollapsibleState.None,
+        'endpoint_action',
+        new vscode.ThemeIcon('add', new vscode.ThemeColor('charts.green'))
+      );
+      addModelNode.tooltip = 'Register a custom model ID for this endpoint';
+      addModelNode.command = { command: 'simplesignal.endpoint.addModel', title: 'Add Model', arguments: [ep] };
+      items.push(addModelNode);
+
+      // 7. Performance Benchmark
+      const benchNode = new TreeItemNode(
+        'Benchmark Endpoint Speed',
+        vscode.TreeItemCollapsibleState.None,
+        'endpoint_action',
+        new vscode.ThemeIcon('zap', new vscode.ThemeColor('charts.orange'))
+      );
+      benchNode.tooltip = 'Measure tokens per second (TPS) and Time-to-First-Token (TTFT)';
+      benchNode.command = { command: 'simplesignal.endpoint.benchmark', title: 'Benchmark', arguments: [ep] };
+      items.push(benchNode);
+
+      // 8. Configure Protocol
+      const protoNode = new TreeItemNode(
+        `Protocol: ${ep.protocol || 'openai'}`,
+        vscode.TreeItemCollapsibleState.None,
+        'endpoint_action',
+        new vscode.ThemeIcon('gear')
+      );
+      protoNode.tooltip = `Current protocol: ${ep.protocol || 'openai'}\nClick to change protocol (OpenAI, Ollama, Lemonade, Anthropic, Gemini)`;
+      protoNode.command = { command: 'simplesignal.endpoint.configure', title: 'Configure Protocol', arguments: [ep] };
+      items.push(protoNode);
+
+      // 9. Copy Config JSON
+      const copyNode = new TreeItemNode(
+        'Copy Endpoint Config JSON',
+        vscode.TreeItemCollapsibleState.None,
+        'endpoint_action',
+        new vscode.ThemeIcon('copy')
+      );
+      copyNode.command = { command: 'simplesignal.endpoint.copyJson', title: 'Copy JSON', arguments: [ep] };
+      items.push(copyNode);
+
+      // 10. Delete Endpoint
+      const deleteNode = new TreeItemNode(
+        'Delete Endpoint',
+        vscode.TreeItemCollapsibleState.None,
+        'endpoint_action',
+        new vscode.ThemeIcon('trash', new vscode.ThemeColor('charts.red'))
+      );
+      deleteNode.command = { command: 'simplesignal.endpoint.delete', title: 'Delete Endpoint', arguments: [ep] };
+      items.push(deleteNode);
+
+      // 11. Models Subgroup
+      const models = ep.models || [];
+      const modelsGroup = new TreeItemNode(
+        `Models (${models.length})`,
+        models.length > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
+        'endpoint_models_subgroup',
+        new vscode.ThemeIcon('library', new vscode.ThemeColor('charts.blue'))
+      );
+      modelsGroup.description = models.length > 0 ? `${models.length} model(s)` : 'No models (Click Auto-Fetch)';
+      (modelsGroup as any).endpoint = ep;
+      items.push(modelsGroup);
+
+      return items;
+    }
+
+    if (element.contextValue === 'endpoint_models_subgroup') {
+      const ep: EndpointConfig = (element as any).endpoint;
       const models = ep.models || [];
       if (models.length === 0) {
         return [
-          new TreeItemNode('No models found (Run Auto-Fetch)', vscode.TreeItemCollapsibleState.None, 'empty', new vscode.ThemeIcon('warning')),
+          new TreeItemNode('No models found (Click "Auto-Fetch / Refresh Models" above)', vscode.TreeItemCollapsibleState.None, 'empty', new vscode.ThemeIcon('warning')),
         ];
       }
       return models.map((m) => this.createModelNode(m, ep.name));

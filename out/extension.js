@@ -747,6 +747,212 @@ function activate(context) {
             outputChannel.appendLine(`[SimpleSignal] Startup notice: ${err.message || err}`);
         });
     }
+    // ==================== ENDPOINT MANAGEMENT COMMANDS ====================
+    // 1. Set / Edit API Key
+    const setApiKeyCmd = vscode.commands.registerCommand('simplesignal.endpoint.setApiKey', async (arg) => {
+        const ep = await resolveEndpoint(arg);
+        if (!ep)
+            return;
+        const newKey = await vscode.window.showInputBox({
+            title: `Set API Key for "${ep.name}"`,
+            prompt: `Enter API Key or token (current: ${ep.apiKey ? '••••••••' + ep.apiKey.slice(-4) : 'None'}). Leave empty and press Enter to clear.`,
+            password: true,
+            ignoreFocusOut: true,
+        });
+        if (newKey === undefined)
+            return;
+        await updateEndpointInConfig(ep.name, ep.baseUrl, (target) => {
+            target.apiKey = newKey.trim();
+        });
+        vscode.window.showInformationMessage(`🔑 API Key updated for "${ep.name}".`);
+    });
+    context.subscriptions.push(setApiKeyCmd);
+    // 2. Edit Base URL
+    const editUrlCmd = vscode.commands.registerCommand('simplesignal.endpoint.editUrl', async (arg) => {
+        const ep = await resolveEndpoint(arg);
+        if (!ep)
+            return;
+        const newUrl = await vscode.window.showInputBox({
+            title: `Edit Base URL for "${ep.name}"`,
+            prompt: 'Enter the new base URL',
+            value: ep.baseUrl,
+            ignoreFocusOut: true,
+        });
+        if (!newUrl || newUrl.trim() === ep.baseUrl)
+            return;
+        const oldUrl = ep.baseUrl;
+        await updateEndpointInConfig(ep.name, oldUrl, (target) => {
+            target.baseUrl = newUrl.trim();
+        });
+        vscode.window.showInformationMessage(`🌐 Base URL updated for "${ep.name}" to ${newUrl.trim()}`);
+        vscode.commands.executeCommand('simplesignal.endpoint.fetchModels', ep);
+    });
+    context.subscriptions.push(editUrlCmd);
+    // 3. Toggle Enable / Disable
+    const toggleEndpointCmd = vscode.commands.registerCommand('simplesignal.endpoint.toggle', async (arg) => {
+        const ep = await resolveEndpoint(arg);
+        if (!ep)
+            return;
+        const willEnable = ep.enabled === false;
+        await updateEndpointInConfig(ep.name, ep.baseUrl, (target) => {
+            target.enabled = willEnable;
+        });
+        vscode.window.showInformationMessage(`🔌 Endpoint "${ep.name}" is now ${willEnable ? 'Active' : 'Disabled'}.`);
+    });
+    context.subscriptions.push(toggleEndpointCmd);
+    // 4. Auto-Fetch Models for specific endpoint
+    const fetchEndpointModelsCmd = vscode.commands.registerCommand('simplesignal.endpoint.fetchModels', async (arg) => {
+        const ep = await resolveEndpoint(arg);
+        if (!ep)
+            return;
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `⚡ SimpleSignal: Fetching models for "${ep.name}"...`,
+            cancellable: false,
+        }, async () => {
+            try {
+                const models = await modelFetcher_1.ModelFetcher.fetchModelsForEndpoint(ep);
+                await updateEndpointInConfig(ep.name, ep.baseUrl, (target) => {
+                    target.models = models;
+                });
+                vscode.window.showInformationMessage(`⚡ Fetched ${models.length} model(s) for "${ep.name}"!`);
+            }
+            catch (err) {
+                vscode.window.showErrorMessage(`Failed to fetch models for "${ep.name}": ${err.message || err}`);
+            }
+        });
+    });
+    context.subscriptions.push(fetchEndpointModelsCmd);
+    // 5. Add Custom Model
+    const addModelCmd = vscode.commands.registerCommand('simplesignal.endpoint.addModel', async (arg) => {
+        const ep = await resolveEndpoint(arg);
+        if (!ep)
+            return;
+        const modelId = await vscode.window.showInputBox({
+            title: `Add Custom Model to "${ep.name}"`,
+            prompt: 'Enter Model ID / Name (e.g. "qwen2.5-coder-32b", "deepseek-r1")',
+            placeHolder: 'my-custom-model',
+            ignoreFocusOut: true,
+        });
+        if (!modelId)
+            return;
+        const maxInputStr = await vscode.window.showInputBox({
+            title: 'Context Window (Max Input Tokens)',
+            prompt: 'Enter max input token limit',
+            value: '131072',
+            ignoreFocusOut: true,
+        });
+        const maxOutputStr = await vscode.window.showInputBox({
+            title: 'Max Output Tokens',
+            prompt: 'Enter max output token limit',
+            value: '8192',
+            ignoreFocusOut: true,
+        });
+        await updateEndpointInConfig(ep.name, ep.baseUrl, (target) => {
+            if (!target.models)
+                target.models = [];
+            const exists = target.models.find((m) => m.id === modelId.trim());
+            if (exists) {
+                exists.contextLength = parseInt(maxInputStr || '131072', 10);
+                exists.maxOutputTokens = parseInt(maxOutputStr || '8192', 10);
+            }
+            else {
+                target.models.push({
+                    id: modelId.trim(),
+                    name: modelId.trim(),
+                    contextLength: parseInt(maxInputStr || '131072', 10),
+                    maxOutputTokens: parseInt(maxOutputStr || '8192', 10),
+                });
+            }
+        });
+        vscode.window.showInformationMessage(`➕ Model "${modelId.trim()}" added to "${ep.name}".`);
+    });
+    context.subscriptions.push(addModelCmd);
+    // 6. Test Connection & Ping Latency
+    const testConnCmd = vscode.commands.registerCommand('simplesignal.endpoint.testConnection', async (arg) => {
+        const ep = await resolveEndpoint(arg);
+        if (!ep)
+            return;
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `🔄 Testing connection to "${ep.name}" (${ep.baseUrl})...`,
+            cancellable: false,
+        }, async () => {
+            const start = Date.now();
+            try {
+                const models = await modelFetcher_1.ModelFetcher.fetchModelsForEndpoint(ep);
+                const duration = Date.now() - start;
+                outputChannel.show(true);
+                outputChannel.appendLine(`[SimpleSignal] ✅ Test Connection SUCCESS: "${ep.name}" (${ep.baseUrl}) - Ping: ${duration}ms, Models: ${models.length}`);
+                vscode.window.showInformationMessage(`✅ "${ep.name}" is ONLINE! Latency: ${duration}ms (${models.length} models found)`);
+            }
+            catch (err) {
+                const duration = Date.now() - start;
+                outputChannel.show(true);
+                outputChannel.appendLine(`[SimpleSignal] ❌ Test Connection FAILED: "${ep.name}" (${ep.baseUrl}) - Ping: ${duration}ms - Error: ${err.message || err}`);
+                vscode.window.showErrorMessage(`❌ Connection to "${ep.name}" failed (${duration}ms): ${err.message || err}`);
+            }
+        });
+    });
+    context.subscriptions.push(testConnCmd);
+    // 7. Benchmark Endpoint
+    const benchEndpointCmd = vscode.commands.registerCommand('simplesignal.endpoint.benchmark', async (arg) => {
+        const ep = await resolveEndpoint(arg);
+        if (!ep)
+            return;
+        const models = ep.models || [];
+        if (models.length === 0) {
+            vscode.window.showWarningMessage(`No models found in "${ep.name}". Please auto-fetch models first.`);
+            return;
+        }
+        const picked = await vscode.window.showQuickPick(models.map((m) => ({ label: `$(zap) ${m.id}`, modelId: m.id })), { title: `Select Model to Benchmark on "${ep.name}"` });
+        if (!picked)
+            return;
+        vscode.commands.executeCommand('simplesignal.runBenchmark', { ep, model: { id: picked.modelId } });
+    });
+    context.subscriptions.push(benchEndpointCmd);
+    // 8. Configure Protocol & Headers
+    const configureEndpointCmd = vscode.commands.registerCommand('simplesignal.endpoint.configure', async (arg) => {
+        const ep = await resolveEndpoint(arg);
+        if (!ep)
+            return;
+        const protocols = ['openai', 'ollama', 'lemonade', 'anthropic', 'gemini'];
+        const chosenProtocol = await vscode.window.showQuickPick(protocols.map((p) => ({
+            label: p === (ep.protocol || 'openai') ? `$(check) ${p}` : p,
+            protocol: p,
+        })), { title: `Select API Protocol for "${ep.name}" (Current: ${ep.protocol || 'openai'})` });
+        if (!chosenProtocol)
+            return;
+        await updateEndpointInConfig(ep.name, ep.baseUrl, (target) => {
+            target.protocol = chosenProtocol.protocol;
+        });
+        vscode.window.showInformationMessage(`⚙️ Protocol for "${ep.name}" updated to "${chosenProtocol.protocol}".`);
+    });
+    context.subscriptions.push(configureEndpointCmd);
+    // 9. Copy Endpoint JSON
+    const copyJsonCmd = vscode.commands.registerCommand('simplesignal.endpoint.copyJson', async (arg) => {
+        const ep = await resolveEndpoint(arg);
+        if (!ep)
+            return;
+        await vscode.env.clipboard.writeText(JSON.stringify(ep, null, 2));
+        vscode.window.showInformationMessage(`📋 Copied configuration for "${ep.name}" to clipboard.`);
+    });
+    context.subscriptions.push(copyJsonCmd);
+    // 10. Delete Endpoint
+    const deleteEndpointCmd = vscode.commands.registerCommand('simplesignal.endpoint.delete', async (arg) => {
+        const ep = await resolveEndpoint(arg);
+        if (!ep)
+            return;
+        const confirm = await vscode.window.showWarningMessage(`Are you sure you want to delete endpoint "${ep.name}" (${ep.baseUrl})?`, { modal: true }, 'Yes, Delete Endpoint');
+        if (confirm !== 'Yes, Delete Endpoint')
+            return;
+        const config = vscode.workspace.getConfiguration('simplesignal');
+        let endpoints = JSON.parse(JSON.stringify(config.get('endpoints', [])));
+        endpoints = endpoints.filter((e) => !(e.name === ep.name && e.baseUrl === ep.baseUrl));
+        await config.update('endpoints', endpoints, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage(`🗑️ Deleted endpoint "${ep.name}".`);
+    });
+    context.subscriptions.push(deleteEndpointCmd);
 }
 async function handleProcessAction(proc, outputChannel) {
     const actions = [
@@ -819,6 +1025,37 @@ function updateStatusBar(statusBarItem) {
     }
     statusBarItem.show();
 }
+async function resolveEndpoint(arg) {
+    if (arg && arg.endpoint)
+        return arg.endpoint;
+    if (arg && arg.baseUrl && arg.name)
+        return arg;
+    const config = vscode.workspace.getConfiguration('simplesignal');
+    const endpoints = config.get('endpoints', []);
+    if (endpoints.length === 0) {
+        vscode.window.showInformationMessage('No endpoints configured yet. Click "Add New Endpoint" first.');
+        return undefined;
+    }
+    const items = endpoints.map((ep) => ({
+        label: `$(server) ${ep.name}`,
+        description: `${ep.baseUrl} (${ep.models?.length || 0} models)`,
+        endpoint: ep,
+    }));
+    const picked = await vscode.window.showQuickPick(items, {
+        title: 'Select Signal Endpoint',
+        placeHolder: 'Choose an endpoint to manage',
+    });
+    return picked?.endpoint;
+}
+async function updateEndpointInConfig(epName, epUrl, mutator) {
+    const config = vscode.workspace.getConfiguration('simplesignal');
+    const endpoints = JSON.parse(JSON.stringify(config.get('endpoints', [])));
+    const target = endpoints.find((e) => e.name === epName || e.baseUrl === epUrl);
+    if (!target)
+        return;
+    mutator(target);
+    await config.update('endpoints', endpoints, vscode.ConfigurationTarget.Global);
+}
 async function promptAddNewEndpoint() {
     const name = await vscode.window.showInputBox({
         title: 'New Endpoint Name',
@@ -858,35 +1095,56 @@ async function promptAddNewEndpoint() {
     };
     endpoints.push(newEp);
     await config.update('endpoints', endpoints, vscode.ConfigurationTarget.Global);
-    vscode.commands.executeCommand('simplesignal.autoFetchModels');
+    vscode.commands.executeCommand('simplesignal.endpoint.fetchModels', newEp);
 }
 async function promptEditEndpoint(endpoint) {
-    const choice = await vscode.window.showQuickPick([
-        { label: endpoint.enabled === false ? '$(pass) Enable Endpoint' : '$(stop) Disable Endpoint', action: 'toggle' },
-        { label: '$(sync) Fetch Models for this Endpoint', action: 'fetch' },
-        { label: '$(trash) Delete Endpoint', action: 'delete' },
-    ], {
-        title: `Manage: ${endpoint.name}`,
+    const choices = [
+        { label: '$(key) Set / Edit API Key', description: endpoint.apiKey ? '••••••••' + endpoint.apiKey.slice(-4) : 'None configured', action: 'apiKey' },
+        { label: '$(globe) Edit Base URL', description: endpoint.baseUrl, action: 'url' },
+        { label: '$(sync) Auto-Fetch Models for this Endpoint', description: `${endpoint.models?.length || 0} models cached`, action: 'fetch' },
+        { label: '$(add) Add Custom Model', description: 'Manually register a model ID', action: 'addModel' },
+        { label: '$(pulse) Test Connection & Latency', description: 'Ping endpoint and test response', action: 'test' },
+        { label: '$(zap) Performance Benchmark', description: 'Measure TPS and TTFT', action: 'benchmark' },
+        { label: endpoint.enabled === false ? '$(pass) Enable Endpoint' : '$(stop) Disable Endpoint', description: endpoint.enabled === false ? 'Currently Disabled' : 'Currently Active', action: 'toggle' },
+        { label: '$(gear) Configure Protocol', description: `Protocol: ${endpoint.protocol || 'openai'}`, action: 'protocol' },
+        { label: '$(copy) Copy Endpoint Config JSON', description: 'Copy to clipboard', action: 'copy' },
+        { label: '$(trash) Delete Endpoint', description: 'Remove from configuration', action: 'delete' },
+    ];
+    const choice = await vscode.window.showQuickPick(choices, {
+        title: `⚡ Manage Endpoint: ${endpoint.name}`,
+        placeHolder: 'Select an action for this endpoint',
     });
     if (!choice)
         return;
-    const config = vscode.workspace.getConfiguration('simplesignal');
-    let endpoints = JSON.parse(JSON.stringify(config.get('endpoints', [])));
-    const index = endpoints.findIndex((e) => e.name === endpoint.name && e.baseUrl === endpoint.baseUrl);
-    if (index === -1)
-        return;
-    if (choice.action === 'toggle') {
-        endpoints[index].enabled = !(endpoints[index].enabled !== false);
-        await config.update('endpoints', endpoints, vscode.ConfigurationTarget.Global);
-        vscode.window.showInformationMessage(`SimpleSignal: ${endpoints[index].name} is now ${endpoints[index].enabled ? 'Enabled' : 'Disabled'}.`);
+    if (choice.action === 'apiKey') {
+        vscode.commands.executeCommand('simplesignal.endpoint.setApiKey', endpoint);
     }
-    else if (choice.action === 'delete') {
-        endpoints.splice(index, 1);
-        await config.update('endpoints', endpoints, vscode.ConfigurationTarget.Global);
-        vscode.window.showInformationMessage(`SimpleSignal: Removed endpoint "${endpoint.name}".`);
+    else if (choice.action === 'url') {
+        vscode.commands.executeCommand('simplesignal.endpoint.editUrl', endpoint);
     }
     else if (choice.action === 'fetch') {
-        vscode.commands.executeCommand('simplesignal.autoFetchModels');
+        vscode.commands.executeCommand('simplesignal.endpoint.fetchModels', endpoint);
+    }
+    else if (choice.action === 'addModel') {
+        vscode.commands.executeCommand('simplesignal.endpoint.addModel', endpoint);
+    }
+    else if (choice.action === 'test') {
+        vscode.commands.executeCommand('simplesignal.endpoint.testConnection', endpoint);
+    }
+    else if (choice.action === 'benchmark') {
+        vscode.commands.executeCommand('simplesignal.endpoint.benchmark', endpoint);
+    }
+    else if (choice.action === 'toggle') {
+        vscode.commands.executeCommand('simplesignal.endpoint.toggle', endpoint);
+    }
+    else if (choice.action === 'protocol') {
+        vscode.commands.executeCommand('simplesignal.endpoint.configure', endpoint);
+    }
+    else if (choice.action === 'copy') {
+        vscode.commands.executeCommand('simplesignal.endpoint.copyJson', endpoint);
+    }
+    else if (choice.action === 'delete') {
+        vscode.commands.executeCommand('simplesignal.endpoint.delete', endpoint);
     }
 }
 function deactivate() { }
