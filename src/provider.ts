@@ -288,19 +288,33 @@ export class SimpleSignalChatProvider implements vscode.LanguageModelChatProvide
 
               if (delta.reasoning_content) {
                 if (!inThinkingBlock) {
-                  progress.report(new vscode.LanguageModelTextPart('💭 *Thinking:*\n'));
+                  progress.report(new vscode.LanguageModelTextPart('<details open>\n<summary>🧠 <b>Thought Process</b></summary>\n\n> _Reasoning Chain:_\n> '));
                   inThinkingBlock = true;
                 }
-                progress.report(new vscode.LanguageModelTextPart(delta.reasoning_content));
+                const formatted = delta.reasoning_content.replace(/\n/g, '\n> ');
+                progress.report(new vscode.LanguageModelTextPart(formatted));
                 ModelTelemetryTracker.updateChunk(telemetrySession.id, delta.reasoning_content, true);
               }
 
               if (delta.content) {
                 if (inThinkingBlock && !delta.reasoning_content) {
-                  progress.report(new vscode.LanguageModelTextPart('\n\n---\n\n'));
+                  progress.report(new vscode.LanguageModelTextPart('\n\n</details>\n\n'));
                   inThinkingBlock = false;
                 }
-                progress.report(new vscode.LanguageModelTextPart(delta.content));
+
+                let text = delta.content;
+                if (text.includes('<think>')) {
+                  inThinkingBlock = true;
+                  text = text.replace(/<think>/g, '<details open>\n<summary>🧠 <b>Thought Process</b></summary>\n\n> _Reasoning Chain:_\n> ');
+                }
+                if (text.includes('</think>')) {
+                  inThinkingBlock = false;
+                  text = text.replace(/<\/think>/g, '\n\n</details>\n\n');
+                } else if (inThinkingBlock) {
+                  text = text.replace(/\n/g, '\n> ');
+                }
+
+                progress.report(new vscode.LanguageModelTextPart(text));
                 ModelTelemetryTracker.updateChunk(telemetrySession.id, delta.content, false);
               }
 

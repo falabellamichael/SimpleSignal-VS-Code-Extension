@@ -279,17 +279,29 @@ class SimpleSignalChatParticipant {
                                     continue;
                                 if (delta.reasoning_content) {
                                     if (!inThinkingBlock) {
-                                        stream.markdown('> 💭 *Reasoning Process:*\n> \n');
+                                        stream.markdown('<details open>\n<summary>🧠 <b>Thought Process</b></summary>\n\n> _Reasoning Chain:_\n> ');
                                         inThinkingBlock = true;
                                     }
-                                    stream.markdown(delta.reasoning_content);
+                                    const formatted = delta.reasoning_content.replace(/\n/g, '\n> ');
+                                    stream.markdown(formatted);
                                     telemetryTracker_1.ModelTelemetryTracker.updateChunk(stats.id, delta.reasoning_content, true);
                                 }
-                                const content = delta.content || choice.text || '';
+                                let content = delta.content || choice.text || '';
                                 if (content) {
-                                    if (inThinkingBlock) {
-                                        stream.markdown('\n\n---\n\n');
+                                    if (inThinkingBlock && !delta.reasoning_content) {
+                                        stream.markdown('\n\n</details>\n\n');
                                         inThinkingBlock = false;
+                                    }
+                                    if (content.includes('<think>')) {
+                                        inThinkingBlock = true;
+                                        content = content.replace(/<think>/g, '<details open>\n<summary>🧠 <b>Thought Process</b></summary>\n\n> _Reasoning Chain:_\n> ');
+                                    }
+                                    if (content.includes('</think>')) {
+                                        inThinkingBlock = false;
+                                        content = content.replace(/<\/think>/g, '\n\n</details>\n\n');
+                                    }
+                                    else if (inThinkingBlock) {
+                                        content = content.replace(/\n/g, '\n> ');
                                     }
                                     fullCompletion += content;
                                     completionTokens += Math.max(1, Math.ceil(content.length / 3.8));
@@ -299,6 +311,10 @@ class SimpleSignalChatParticipant {
                             }
                             catch { }
                         }
+                    }
+                    if (inThinkingBlock) {
+                        stream.markdown('\n\n</details>\n\n');
+                        inThinkingBlock = false;
                     }
                     isSuccess = true;
                     break;
@@ -315,8 +331,8 @@ class SimpleSignalChatParticipant {
                 const finalStats = telemetryTracker_1.ModelTelemetryTracker.completeMessage(stats.id);
                 if (finalStats) {
                     outputChannel.appendLine(`[SimpleSignal Chat] Completed ${actualModelId} in ${finalStats.totalDurationMs}ms (${finalStats.tokensPerSec.toFixed(1)} tok/s)`);
-                    // Subtle, clean telemetry footer
-                    stream.markdown(`\n\n---\n*⚡ SimpleSignal • ${actualModelId} • ${finalStats.tokensPerSec.toFixed(1)} tok/s • ${finalStats.totalDurationMs}ms*`);
+                    // Subtle, discrete telemetry footer matching VS Code aesthetics
+                    stream.markdown(`\n\n---\n<sub>⚡ <b>SimpleSignal</b> &bull; <code>${actualModelId}</code> &bull; ⚡ <b>${finalStats.tokensPerSec.toFixed(1)} tok/s</b> &bull; ⏱️ <b>${finalStats.totalDurationMs}ms</b></sub>`);
                 }
             }
         };
