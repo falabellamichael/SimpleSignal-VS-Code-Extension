@@ -991,7 +991,15 @@ class SimpleSignalDashboard {
 <body>
   <div class="hero">
     <div class="hero-title">
-      <h1>⚡ SimpleSignal Hub</h1>
+      <h1>
+        <svg style="width: 24px; height: 24px; color: var(--neon-accent); vertical-align: -4px; margin-right: 6px; display: inline-block;" viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M 86.29 202.29 A 240 240 0 0 1 425.71 202.29" stroke-width="36" />
+          <path d="M 142.86 258.86 A 160 160 0 0 1 369.14 258.86" stroke-width="36" />
+          <path d="M 199.43 315.43 A 80 80 0 0 1 312.57 315.43" stroke-width="36" />
+          <circle cx="256" cy="372" r="26" fill="currentColor" stroke="none" />
+        </svg>
+        SimpleSignal Hub
+      </h1>
       <p>Universal AI orchestration, real-time message telemetry, speed benchmarks & hardware diagnostics</p>
     </div>
     <div class="hero-stats">
@@ -1052,6 +1060,12 @@ class SimpleSignalDashboard {
           <div class="card-header">
             <h3 class="card-title">
               <span class="status-dot ${isEnabled ? '' : 'disabled'}"></span>
+              <svg style="width: 14px; height: 14px; color: ${isEnabled ? 'var(--neon-accent)' : '#888'}; vertical-align: -2px; margin-right: 2px;" viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M 86.29 202.29 A 240 240 0 0 1 425.71 202.29" stroke-width="40" />
+                <path d="M 142.86 258.86 A 160 160 0 0 1 369.14 258.86" stroke-width="40" />
+                <path d="M 199.43 315.43 A 80 80 0 0 1 312.57 315.43" stroke-width="40" />
+                <circle cx="256" cy="372" r="30" fill="currentColor" stroke="none" />
+              </svg>
               ${ep.name}
             </h3>
             <span class="badge ${ep.protocol === 'lemonade' ? 'badge-neon' : ep.protocol === 'ollama' ? 'badge-cyan' : ''}">${ep.protocol || 'openai'}</span>
@@ -1072,8 +1086,16 @@ class SimpleSignalDashboard {
                 ? models
                     .map((m) => `
                 <div class="model-item" data-model="${m.id.toLowerCase()}">
-                  <span style="font-family: monospace; font-size: 11px;">${m.id}</span>
-                  <div style="display: flex; align-items: center; gap: 4px;">
+                  <div style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    <svg style="width: 12px; height: 12px; color: var(--neon-accent); flex-shrink: 0;" viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M 86.29 202.29 A 240 240 0 0 1 425.71 202.29" stroke-width="42" />
+                      <path d="M 142.86 258.86 A 160 160 0 0 1 369.14 258.86" stroke-width="42" />
+                      <path d="M 199.43 315.43 A 80 80 0 0 1 312.57 315.43" stroke-width="42" />
+                      <circle cx="256" cy="372" r="32" fill="currentColor" stroke="none" />
+                    </svg>
+                    <span style="font-family: monospace; font-size: 11px;">${m.id}</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
                     ${m.supportsVision ? '<span class="badge" title="Vision Capable">👁️</span>' : ''}
                     ${m.supportsTools ? '<span class="badge" title="Function Calling / Tools">🛠️</span>' : ''}
                     <button class="card-btn" style="padding: 2px 6px; font-size: 9px;" onclick="window.selectModelForBench('${ep.name}', '${m.id}')" title="Test this model">⚡ Test</button>
@@ -1083,6 +1105,7 @@ class SimpleSignalDashboard {
                 : '<div style="color: var(--muted-text); font-size: 12px; padding: 6px;">No models fetched yet. Click "Auto-Fetch".</div>'}
             </div>
           </div>
+
 
           <div class="card-footer">
             <button class="card-btn" data-action="test" data-endpoint="${ep.name}">🧪 Test Signal</button>

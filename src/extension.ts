@@ -19,7 +19,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(registration);
 
   // Register TreeDataProvider for Sidebar
-  const treeDataProvider = new SimpleSignalTreeDataProvider();
+  const treeDataProvider = new SimpleSignalTreeDataProvider(context.extensionUri);
   const treeView = vscode.window.createTreeView('simplesignalExplorer', {
     treeDataProvider,
     showCollapseAll: true,
@@ -42,7 +42,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (event.type === 'chunk' || event.type === 'start') {
         statusBarItem.text = `$(zap) ${s.modelName || s.modelId}: ${s.tokensPerSec.toFixed(1)} tok/s`;
       } else if (event.type === 'complete') {
-        statusBarItem.text = `$(sparkle) ${s.modelName || s.modelId}: ${s.tokensPerSec.toFixed(1)} tok/s (${s.tokensGenerated} tok in ${(s.totalDurationMs / 1000).toFixed(1)}s)`;
+        statusBarItem.text = `$(radio-tower) ${s.modelName || s.modelId}: ${s.tokensPerSec.toFixed(1)} tok/s (${s.tokensGenerated} tok in ${(s.totalDurationMs / 1000).toFixed(1)}s)`;
         resetStatusBarTimer = setTimeout(() => updateStatusBar(statusBarItem), 7000);
       } else if (event.type === 'error') {
         statusBarItem.text = `$(error) ${s.modelName || s.modelId}: Error`;
@@ -648,7 +648,7 @@ function updateStatusBar(statusBarItem: vscode.StatusBarItem) {
   const totalModels = endpoints.reduce((sum, ep) => sum + (ep.models?.length || 0), 0);
 
   if (totalModels > 0) {
-    statusBarItem.text = `$(sparkle) SimpleSignal: ${totalModels} Models`;
+    statusBarItem.text = `$(radio-tower) SimpleSignal: ${totalModels} Models`;
     statusBarItem.backgroundColor = undefined;
   } else {
     statusBarItem.text = `$(warning) SimpleSignal: 0 Models`;

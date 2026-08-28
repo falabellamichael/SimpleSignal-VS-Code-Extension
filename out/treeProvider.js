@@ -36,8 +36,18 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TreeItemNode = exports.SimpleSignalTreeDataProvider = void 0;
 const vscode = __importStar(require("vscode"));
 class SimpleSignalTreeDataProvider {
+    extensionUri;
     _onDidChangeTreeData = new vscode.EventEmitter();
     onDidChangeTreeData = this._onDidChangeTreeData.event;
+    constructor(extensionUri) {
+        this.extensionUri = extensionUri;
+    }
+    getSignalLogoIcon() {
+        if (this.extensionUri) {
+            return vscode.Uri.joinPath(this.extensionUri, 'media', 'logo.svg');
+        }
+        return new vscode.ThemeIcon('radio-tower', new vscode.ThemeColor('charts.yellow'));
+    }
     refresh() {
         this._onDidChangeTreeData.fire();
     }
@@ -50,7 +60,7 @@ class SimpleSignalTreeDataProvider {
         if (!element) {
             const totalModels = endpoints.reduce((acc, e) => acc + (e.models?.length || 0), 0);
             const endpointsCategory = new TreeItemNode(`Signal Endpoints (${endpoints.length})`, vscode.TreeItemCollapsibleState.Expanded, 'category_endpoints', new vscode.ThemeIcon('radio-tower'));
-            const modelsCategory = new TreeItemNode(`Available Models (${totalModels})`, vscode.TreeItemCollapsibleState.Expanded, 'category_models', new vscode.ThemeIcon('hubot'));
+            const modelsCategory = new TreeItemNode(`Available Models (${totalModels})`, vscode.TreeItemCollapsibleState.Expanded, 'category_models', this.getSignalLogoIcon());
             const actionsCategory = new TreeItemNode('Quick Actions', vscode.TreeItemCollapsibleState.Expanded, 'category_actions', new vscode.ThemeIcon('zap'));
             return [endpointsCategory, modelsCategory, actionsCategory];
         }
@@ -145,7 +155,7 @@ class SimpleSignalTreeDataProvider {
             badges.push('👁️');
         if (model.supportsTools)
             badges.push('🛠️');
-        const node = new TreeItemNode(model.id, vscode.TreeItemCollapsibleState.None, 'model_item', new vscode.ThemeIcon('sparkle', new vscode.ThemeColor('charts.yellow')));
+        const node = new TreeItemNode(model.id, vscode.TreeItemCollapsibleState.None, 'model_item', this.getSignalLogoIcon());
         node.description = `${badges.join(' ')} [${endpointName}]`;
         node.tooltip = `Model: ${model.id}\nEndpoint: ${endpointName}\nContext Window: ${model.contextLength || 131072} tokens\nVision: ${model.supportsVision ? 'Yes' : 'No'}\nTools: ${model.supportsTools ? 'Yes' : 'No'}`;
         return node;

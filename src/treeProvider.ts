@@ -5,6 +5,15 @@ export class SimpleSignalTreeDataProvider implements vscode.TreeDataProvider<Tre
   private _onDidChangeTreeData = new vscode.EventEmitter<TreeItemNode | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
+  constructor(private extensionUri?: vscode.Uri) {}
+
+  private getSignalLogoIcon(): vscode.Uri | vscode.ThemeIcon {
+    if (this.extensionUri) {
+      return vscode.Uri.joinPath(this.extensionUri, 'media', 'logo.svg');
+    }
+    return new vscode.ThemeIcon('radio-tower', new vscode.ThemeColor('charts.yellow'));
+  }
+
   refresh(): void {
     this._onDidChangeTreeData.fire();
   }
@@ -31,7 +40,7 @@ export class SimpleSignalTreeDataProvider implements vscode.TreeDataProvider<Tre
         `Available Models (${totalModels})`,
         vscode.TreeItemCollapsibleState.Expanded,
         'category_models',
-        new vscode.ThemeIcon('hubot')
+        this.getSignalLogoIcon()
       );
 
       const actionsCategory = new TreeItemNode(
@@ -222,7 +231,7 @@ export class SimpleSignalTreeDataProvider implements vscode.TreeDataProvider<Tre
       model.id,
       vscode.TreeItemCollapsibleState.None,
       'model_item',
-      new vscode.ThemeIcon('sparkle', new vscode.ThemeColor('charts.yellow'))
+      this.getSignalLogoIcon()
     );
     node.description = `${badges.join(' ')} [${endpointName}]`;
     node.tooltip = `Model: ${model.id}\nEndpoint: ${endpointName}\nContext Window: ${model.contextLength || 131072} tokens\nVision: ${model.supportsVision ? 'Yes' : 'No'}\nTools: ${model.supportsTools ? 'Yes' : 'No'}`;
@@ -235,7 +244,7 @@ export class TreeItemNode extends vscode.TreeItem {
     public readonly label: string,
     public readonly collapsibleState: vscode.TreeItemCollapsibleState,
     public readonly contextValue: string,
-    public readonly iconPath?: vscode.ThemeIcon | vscode.Uri
+    public readonly iconPath?: vscode.ThemeIcon | vscode.Uri | { light: vscode.Uri; dark: vscode.Uri }
   ) {
     super(label, collapsibleState);
   }
