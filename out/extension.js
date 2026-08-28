@@ -690,9 +690,15 @@ function activate(context) {
             modelId = picked.modelId;
             epName = picked.epName;
         }
-        const config = vscode.workspace.getConfiguration('simplesignal');
-        await config.update('defaultModel', `${epName}:::${modelId}`, vscode.ConfigurationTarget.Global);
-        await vscode.env.clipboard.writeText(modelId);
+        try {
+            const config = vscode.workspace.getConfiguration('simplesignal');
+            await config.update('defaultModel', `${epName}:::${modelId}`, vscode.ConfigurationTarget.Global);
+        }
+        catch { }
+        try {
+            await vscode.env.clipboard.writeText(modelId);
+        }
+        catch { }
         dashboard_1.SimpleSignalDashboard.selectedModel = { endpointName: epName, modelId };
         dashboard_1.SimpleSignalDashboard.onModelSelectionChanged?.(epName, modelId);
         treeDataProvider.setSelectedModel(epName, modelId);

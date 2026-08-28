@@ -169,6 +169,11 @@
     "configuration": {
       "title": "SimpleSignal Configuration",
       "properties": {
+        "simplesignal.defaultModel": {
+          "type": "string",
+          "default": "",
+          "description": "Composite identifier of the active/selected AI model (e.g. 'Lemonade Server:::qwen3.5-4B-super-coder')."
+        },
         "simplesignal.autoScanLocalServers": {
           "type": "boolean",
           "default": true,

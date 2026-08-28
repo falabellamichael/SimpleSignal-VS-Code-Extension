@@ -359,9 +359,15 @@ class SimpleSignalDashboard {
     }
     async handleSelectModel(message) {
         SimpleSignalDashboard.selectedModel = { endpointName: message.endpointName, modelId: message.modelId };
-        const config = vscode.workspace.getConfiguration('simplesignal');
-        await config.update('defaultModel', `${message.endpointName}:::${message.modelId}`, vscode.ConfigurationTarget.Global);
-        await vscode.env.clipboard.writeText(message.modelId);
+        try {
+            const config = vscode.workspace.getConfiguration('simplesignal');
+            await config.update('defaultModel', `${message.endpointName}:::${message.modelId}`, vscode.ConfigurationTarget.Global);
+        }
+        catch { }
+        try {
+            await vscode.env.clipboard.writeText(message.modelId);
+        }
+        catch { }
         // Notify TreeDataProvider and StatusBar
         SimpleSignalDashboard.onModelSelectionChanged?.(message.endpointName, message.modelId);
         // Post to webview to instantly light up icon

@@ -721,9 +721,14 @@ export function activate(context: vscode.ExtensionContext) {
       epName = picked.epName;
     }
 
-    const config = vscode.workspace.getConfiguration('simplesignal');
-    await config.update('defaultModel', `${epName}:::${modelId}`, vscode.ConfigurationTarget.Global);
-    await vscode.env.clipboard.writeText(modelId);
+    try {
+      const config = vscode.workspace.getConfiguration('simplesignal');
+      await config.update('defaultModel', `${epName}:::${modelId}`, vscode.ConfigurationTarget.Global);
+    } catch {}
+
+    try {
+      await vscode.env.clipboard.writeText(modelId);
+    } catch {}
 
     SimpleSignalDashboard.selectedModel = { endpointName: epName, modelId };
     SimpleSignalDashboard.onModelSelectionChanged?.(epName, modelId);
