@@ -286,32 +286,32 @@ export class SimpleSignalChatProvider implements vscode.LanguageModelChatProvide
               const delta = choice.delta;
               if (!delta) continue;
 
+              const openThinkingTag = '<details open style="margin: 8px 0 14px 0; border: 1px solid rgba(255, 230, 0, 0.25); border-radius: 6px; background: rgba(255, 230, 0, 0.03); overflow: hidden;">\n<summary style="cursor: pointer; padding: 6px 10px; font-weight: 600; opacity: 0.9; user-select: none;">🧠 <b>Thought Process</b> <span style="opacity: 0.55; font-size: 0.85em; font-weight: normal;">(click to toggle)</span></summary>\n<div style="max-height: 220px; overflow-y: auto; padding: 10px 14px; border-top: 1px solid rgba(255, 230, 0, 0.15); font-size: 0.92em; line-height: 1.55; opacity: 0.85;">\n\n';
+              const closeThinkingTag = '\n\n</div>\n</details>\n\n';
+
               if (delta.reasoning_content) {
                 if (!inThinkingBlock) {
-                  progress.report(new vscode.LanguageModelTextPart('<details open>\n<summary>🧠 <b>Thought Process</b></summary>\n\n> _Reasoning Chain:_\n> '));
+                  progress.report(new vscode.LanguageModelTextPart(openThinkingTag));
                   inThinkingBlock = true;
                 }
-                const formatted = delta.reasoning_content.replace(/\n/g, '\n> ');
-                progress.report(new vscode.LanguageModelTextPart(formatted));
+                progress.report(new vscode.LanguageModelTextPart(delta.reasoning_content));
                 ModelTelemetryTracker.updateChunk(telemetrySession.id, delta.reasoning_content, true);
               }
 
               if (delta.content) {
                 if (inThinkingBlock && !delta.reasoning_content) {
-                  progress.report(new vscode.LanguageModelTextPart('\n\n</details>\n\n'));
+                  progress.report(new vscode.LanguageModelTextPart(closeThinkingTag));
                   inThinkingBlock = false;
                 }
 
                 let text = delta.content;
                 if (text.includes('<think>')) {
                   inThinkingBlock = true;
-                  text = text.replace(/<think>/g, '<details open>\n<summary>🧠 <b>Thought Process</b></summary>\n\n> _Reasoning Chain:_\n> ');
+                  text = text.replace(/<think>/g, openThinkingTag);
                 }
                 if (text.includes('</think>')) {
                   inThinkingBlock = false;
-                  text = text.replace(/<\/think>/g, '\n\n</details>\n\n');
-                } else if (inThinkingBlock) {
-                  text = text.replace(/\n/g, '\n> ');
+                  text = text.replace(/<\/think>/g, closeThinkingTag);
                 }
 
                 progress.report(new vscode.LanguageModelTextPart(text));
