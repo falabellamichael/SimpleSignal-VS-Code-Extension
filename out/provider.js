@@ -254,6 +254,28 @@ class SimpleSignalChatProvider {
             let buffer = '';
             const pendingToolCalls = new Map();
             let inThinkingBlock = false;
+            let reasoningLineLen = 0;
+            const wrapReasoning = (chunk, maxLen = 78) => {
+                let res = '';
+                for (let i = 0; i < chunk.length; i++) {
+                    const ch = chunk[i];
+                    if (ch === '\n') {
+                        res += '\n';
+                        reasoningLineLen = 0;
+                    }
+                    else {
+                        if (reasoningLineLen >= maxLen && (ch === ' ' || ch === '\t')) {
+                            res += '\n';
+                            reasoningLineLen = 0;
+                        }
+                        else {
+                            res += ch;
+                            reasoningLineLen++;
+                        }
+                    }
+                }
+                return res;
+            };
             while (!token.isCancellationRequested) {
                 const { done, value } = await reader.read();
                 if (done)
@@ -283,23 +305,31 @@ class SimpleSignalChatProvider {
                                 if (!inThinkingBlock) {
                                     progress.report(new vscode.LanguageModelTextPart(openThinkingTag));
                                     inThinkingBlock = true;
+                                    reasoningLineLen = 0;
                                 }
-                                progress.report(new vscode.LanguageModelTextPart(delta.reasoning_content));
+                                const wrapped = wrapReasoning(delta.reasoning_content);
+                                progress.report(new vscode.LanguageModelTextPart(wrapped));
                                 telemetryTracker_1.ModelTelemetryTracker.updateChunk(telemetrySession.id, delta.reasoning_content, true);
                             }
                             if (delta.content) {
                                 if (inThinkingBlock && !delta.reasoning_content) {
                                     progress.report(new vscode.LanguageModelTextPart(closeThinkingTag));
                                     inThinkingBlock = false;
+                                    reasoningLineLen = 0;
                                 }
                                 let text = delta.content;
                                 if (text.includes('<think>')) {
                                     inThinkingBlock = true;
+                                    reasoningLineLen = 0;
                                     text = text.replace(/<think>/g, openThinkingTag);
                                 }
                                 if (text.includes('</think>')) {
                                     inThinkingBlock = false;
+                                    reasoningLineLen = 0;
                                     text = text.replace(/<\/think>/g, closeThinkingTag);
+                                }
+                                else if (inThinkingBlock) {
+                                    text = wrapReasoning(text);
                                 }
                                 progress.report(new vscode.LanguageModelTextPart(text));
                                 telemetryTracker_1.ModelTelemetryTracker.updateChunk(telemetrySession.id, delta.content, false);

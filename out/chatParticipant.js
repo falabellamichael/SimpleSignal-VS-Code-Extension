@@ -253,6 +253,28 @@ class SimpleSignalChatParticipant {
                     const openThinkingTag = '🧠 **Thought Process**\n```thinking\n';
                     const closeThinkingTag = '\n```\n\n';
                     let buffer = '';
+                    let reasoningLineLen = 0;
+                    const wrapReasoning = (chunk, maxLen = 78) => {
+                        let res = '';
+                        for (let i = 0; i < chunk.length; i++) {
+                            const ch = chunk[i];
+                            if (ch === '\n') {
+                                res += '\n';
+                                reasoningLineLen = 0;
+                            }
+                            else {
+                                if (reasoningLineLen >= maxLen && (ch === ' ' || ch === '\t')) {
+                                    res += '\n';
+                                    reasoningLineLen = 0;
+                                }
+                                else {
+                                    res += ch;
+                                    reasoningLineLen++;
+                                }
+                            }
+                        }
+                        return res;
+                    };
                     while (true) {
                         if (token.isCancellationRequested) {
                             reader.cancel();
@@ -283,8 +305,10 @@ class SimpleSignalChatParticipant {
                                     if (!inThinkingBlock) {
                                         stream.markdown(openThinkingTag);
                                         inThinkingBlock = true;
+                                        reasoningLineLen = 0;
                                     }
-                                    stream.markdown(delta.reasoning_content);
+                                    const wrapped = wrapReasoning(delta.reasoning_content);
+                                    stream.markdown(wrapped);
                                     telemetryTracker_1.ModelTelemetryTracker.updateChunk(stats.id, delta.reasoning_content, true);
                                 }
                                 let content = delta.content || choice.text || '';
@@ -292,14 +316,20 @@ class SimpleSignalChatParticipant {
                                     if (inThinkingBlock && !delta.reasoning_content) {
                                         stream.markdown(closeThinkingTag);
                                         inThinkingBlock = false;
+                                        reasoningLineLen = 0;
                                     }
                                     if (content.includes('<think>')) {
                                         inThinkingBlock = true;
+                                        reasoningLineLen = 0;
                                         content = content.replace(/<think>/g, openThinkingTag);
                                     }
                                     if (content.includes('</think>')) {
                                         inThinkingBlock = false;
+                                        reasoningLineLen = 0;
                                         content = content.replace(/<\/think>/g, closeThinkingTag);
+                                    }
+                                    else if (inThinkingBlock) {
+                                        content = wrapReasoning(content);
                                     }
                                     fullCompletion += content;
                                     completionTokens += Math.max(1, Math.ceil(content.length / 3.8));
