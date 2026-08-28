@@ -53,7 +53,31 @@ class SimpleSignalChatProvider {
     async provideLanguageModelChatInformation(_options, _token) {
         const config = vscode.workspace.getConfiguration('simplesignal');
         const endpoints = config.get('endpoints', []);
+        const defaultModel = config.get('defaultModel', '');
         const result = [];
+        let activeEndpointName = '';
+        let activeModelId = '';
+        if (defaultModel && defaultModel.includes(':::')) {
+            const parts = defaultModel.split(':::');
+            activeEndpointName = parts[0];
+            activeModelId = parts.slice(1).join(':::');
+        }
+        // 1. Dynamic Active Model entry (routes automatically to currently selected model)
+        if (activeModelId && activeEndpointName) {
+            result.push({
+                id: 'simplesignal-active',
+                name: `⚡ SimpleSignal: Active (${activeModelId})`,
+                family: this.deduceFamily(activeModelId),
+                version: '1.0',
+                maxInputTokens: 131072,
+                maxOutputTokens: 8192,
+                capabilities: {
+                    vision: true,
+                    toolCalling: true,
+                },
+            });
+        }
+        // 2. Add all configured models
         for (const ep of endpoints) {
             if (ep.enabled === false) {
                 continue;
@@ -64,9 +88,15 @@ class SimpleSignalChatProvider {
                     continue;
                 }
                 const compositeId = `${ep.name}:::${m.id}`;
-                const displayName = m.name || `${m.id} (${ep.name})`;
+                const isSelected = activeEndpointName &&
+                    activeModelId &&
+                    ep.name.toLowerCase() === activeEndpointName.toLowerCase() &&
+                    m.id.toLowerCase() === activeModelId.toLowerCase();
+                const displayName = isSelected
+                    ? `⭐ ${m.name || m.id} (${ep.name}) [Active]`
+                    : `${m.name || m.id} (${ep.name})`;
                 const family = this.deduceFamily(m.id);
-                result.push({
+                const info = {
                     id: compositeId,
                     name: displayName,
                     family: family,
@@ -77,7 +107,14 @@ class SimpleSignalChatProvider {
                         vision: m.supportsVision ?? false,
                         toolCalling: m.supportsTools ?? true,
                     },
-                });
+                };
+                if (isSelected) {
+                    // Place active model at front
+                    result.splice(result.length > 0 && result[0].id === 'simplesignal-active' ? 1 : 0, 0, info);
+                }
+                else {
+                    result.push(info);
+                }
             }
         }
         return result;
@@ -86,9 +123,18 @@ class SimpleSignalChatProvider {
         const modelId = model.id;
         const config = vscode.workspace.getConfiguration('simplesignal');
         const endpoints = config.get('endpoints', []);
+        const defaultModel = config.get('defaultModel', '');
         let targetEndpoint;
         let actualModelId = modelId;
-        if (modelId.includes(':::')) {
+        // Handle dynamic active model ID
+        if (modelId === 'simplesignal-active' || modelId === 'default' || modelId === 'active') {
+            if (defaultModel && defaultModel.includes(':::')) {
+                const parts = defaultModel.split(':::');
+                targetEndpoint = endpoints.find((e) => e.name.toLowerCase() === parts[0].toLowerCase());
+                actualModelId = parts.slice(1).join(':::');
+            }
+        }
+        else if (modelId.includes(':::')) {
             const parts = modelId.split(':::');
             const epName = parts[0];
             actualModelId = parts.slice(1).join(':::');
@@ -96,7 +142,7 @@ class SimpleSignalChatProvider {
         }
         if (!targetEndpoint) {
             for (const ep of endpoints) {
-                const match = (ep.models || []).find((m) => m.id === modelId);
+                const match = (ep.models || []).find((m) => m.id === modelId || m.id.toLowerCase() === modelId.toLowerCase());
                 if (match) {
                     targetEndpoint = ep;
                     actualModelId = match.id;
@@ -104,8 +150,16 @@ class SimpleSignalChatProvider {
                 }
             }
         }
+        if (!targetEndpoint && defaultModel && defaultModel.includes(':::')) {
+            const parts = defaultModel.split(':::');
+            targetEndpoint = endpoints.find((e) => e.name.toLowerCase() === parts[0].toLowerCase());
+            actualModelId = parts.slice(1).join(':::');
+        }
         if (!targetEndpoint && endpoints.length > 0) {
             targetEndpoint = endpoints[0];
+            if (targetEndpoint.models && targetEndpoint.models.length > 0) {
+                actualModelId = targetEndpoint.models[0].id;
+            }
         }
         if (!targetEndpoint) {
             throw new Error(`[SimpleSignal] No active endpoint configured for model "${modelId}".`);

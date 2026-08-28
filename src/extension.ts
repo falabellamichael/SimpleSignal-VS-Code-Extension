@@ -33,9 +33,10 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(statusBarItem);
   updateStatusBar(statusBarItem);
 
-  // Hook up Dashboard state changes to Sidebar TreeDataProvider and StatusBar
+  // Hook up Dashboard state changes to Sidebar TreeDataProvider, Provider, and StatusBar
   SimpleSignalDashboard.onModelSelectionChanged = (endpointName, modelId) => {
     treeDataProvider.setSelectedModel(endpointName, modelId);
+    provider.refresh();
     updateStatusBar(statusBarItem);
   };
 

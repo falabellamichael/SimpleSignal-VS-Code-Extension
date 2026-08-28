@@ -63,9 +63,10 @@ function activate(context) {
     statusBarItem.tooltip = 'SimpleSignal: Click to manage AI models & endpoints';
     context.subscriptions.push(statusBarItem);
     updateStatusBar(statusBarItem);
-    // Hook up Dashboard state changes to Sidebar TreeDataProvider and StatusBar
+    // Hook up Dashboard state changes to Sidebar TreeDataProvider, Provider, and StatusBar
     dashboard_1.SimpleSignalDashboard.onModelSelectionChanged = (endpointName, modelId) => {
         treeDataProvider.setSelectedModel(endpointName, modelId);
+        provider.refresh();
         updateStatusBar(statusBarItem);
     };
     dashboard_1.SimpleSignalDashboard.onLoadedModelsChanged = (keys) => {
