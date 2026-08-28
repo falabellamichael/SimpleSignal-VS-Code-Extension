@@ -38,7 +38,9 @@
   ],
   "main": "./out/extension.js",
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onLanguageModelChatProvider:simplesignal",
+    "onChatParticipant:simplesignal.participant"
   ],
   "contributes": {
     "chatParticipants": [
@@ -67,7 +69,7 @@
     "languageModelChatProviders": [
       {
         "vendor": "simplesignal",
-        "displayName": "SimpleSignal (Universal Models)",
+        "displayName": "SimpleSignal: (Active)",
         "managementCommand": "simplesignal.manageEndpoints"
       }
     ],
