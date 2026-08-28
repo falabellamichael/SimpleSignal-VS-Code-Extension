@@ -703,17 +703,27 @@ function activate(context) {
         dashboard_1.SimpleSignalDashboard.selectedModel = { endpointName: epName, modelId };
         dashboard_1.SimpleSignalDashboard.onModelSelectionChanged?.(epName, modelId);
         treeDataProvider.setSelectedModel(epName, modelId);
+        provider.refresh();
         updateStatusBar(statusBarItem);
-        const action = await vscode.window.showInformationMessage(`✨ Selected "${modelId}" [${epName}] as active Chat Model! (Copied ID to clipboard)`, 'Open Chat');
-        if (action === 'Open Chat') {
+        const action = await vscode.window.showInformationMessage(`✨ Selected "${modelId}" [${epName}] as active Chat Model!`, 'New Chat with Model', 'Open Chat');
+        if (action === 'New Chat with Model') {
+            await vscode.commands.executeCommand('workbench.action.chat.newChat');
+        }
+        else if (action === 'Open Chat') {
             await vscode.commands.executeCommand('workbench.action.chat.open');
         }
     });
     context.subscriptions.push(selectModelCmd);
     // Watch configuration changes
     context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration('simplesignal.endpoints')) {
-            outputChannel.appendLine('[SimpleSignal] Endpoints configuration changed, refreshing model list...');
+        if (e.affectsConfiguration('simplesignal.endpoints') || e.affectsConfiguration('simplesignal.defaultModel')) {
+            const config = vscode.workspace.getConfiguration('simplesignal');
+            const defaultModel = config.get('defaultModel');
+            if (defaultModel && defaultModel.includes(':::')) {
+                const parts = defaultModel.split(':::');
+                dashboard_1.SimpleSignalDashboard.selectedModel = { endpointName: parts[0], modelId: parts.slice(1).join(':::') };
+            }
+            outputChannel.appendLine('[SimpleSignal] Configuration changed, refreshing model list and active model...');
             provider.refresh();
             treeDataProvider.refresh();
             updateStatusBar(statusBarItem);
@@ -780,7 +790,15 @@ function updateStatusBar(statusBarItem) {
     const config = vscode.workspace.getConfiguration('simplesignal');
     const endpoints = config.get('endpoints', []);
     const totalModels = endpoints.reduce((sum, ep) => sum + (ep.models?.length || 0), 0);
-    const selected = dashboard_1.SimpleSignalDashboard.selectedModel;
+    let selected = dashboard_1.SimpleSignalDashboard.selectedModel;
+    if (!selected || !selected.modelId) {
+        const defaultModel = config.get('defaultModel');
+        if (defaultModel && defaultModel.includes(':::')) {
+            const parts = defaultModel.split(':::');
+            selected = { endpointName: parts[0], modelId: parts.slice(1).join(':::') };
+            dashboard_1.SimpleSignalDashboard.selectedModel = selected;
+        }
+    }
     if (selected && selected.modelId) {
         statusBarItem.text = `$(radio-tower) SimpleSignal: ${selected.modelId}`;
         statusBarItem.tooltip = `Active Model: ${selected.modelId} [${selected.endpointName}]\nTotal Available Models: ${totalModels} across ${endpoints.length} endpoints\nClick to manage models & settings`;

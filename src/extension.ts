@@ -734,13 +734,17 @@ export function activate(context: vscode.ExtensionContext) {
     SimpleSignalDashboard.selectedModel = { endpointName: epName, modelId };
     SimpleSignalDashboard.onModelSelectionChanged?.(epName, modelId);
     treeDataProvider.setSelectedModel(epName, modelId);
+    provider.refresh();
     updateStatusBar(statusBarItem);
 
     const action = await vscode.window.showInformationMessage(
-      `✨ Selected "${modelId}" [${epName}] as active Chat Model! (Copied ID to clipboard)`,
+      `✨ Selected "${modelId}" [${epName}] as active Chat Model!`,
+      'New Chat with Model',
       'Open Chat'
     );
-    if (action === 'Open Chat') {
+    if (action === 'New Chat with Model') {
+      await vscode.commands.executeCommand('workbench.action.chat.newChat');
+    } else if (action === 'Open Chat') {
       await vscode.commands.executeCommand('workbench.action.chat.open');
     }
   });
@@ -749,8 +753,14 @@ export function activate(context: vscode.ExtensionContext) {
   // Watch configuration changes
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('simplesignal.endpoints')) {
-        outputChannel.appendLine('[SimpleSignal] Endpoints configuration changed, refreshing model list...');
+      if (e.affectsConfiguration('simplesignal.endpoints') || e.affectsConfiguration('simplesignal.defaultModel')) {
+        const config = vscode.workspace.getConfiguration('simplesignal');
+        const defaultModel = config.get<string>('defaultModel');
+        if (defaultModel && defaultModel.includes(':::')) {
+          const parts = defaultModel.split(':::');
+          SimpleSignalDashboard.selectedModel = { endpointName: parts[0], modelId: parts.slice(1).join(':::') };
+        }
+        outputChannel.appendLine('[SimpleSignal] Configuration changed, refreshing model list and active model...');
         provider.refresh();
         treeDataProvider.refresh();
         updateStatusBar(statusBarItem);
@@ -825,7 +835,15 @@ function updateStatusBar(statusBarItem: vscode.StatusBarItem) {
   const endpoints = config.get<EndpointConfig[]>('endpoints', []);
   const totalModels = endpoints.reduce((sum, ep) => sum + (ep.models?.length || 0), 0);
 
-  const selected = SimpleSignalDashboard.selectedModel;
+  let selected = SimpleSignalDashboard.selectedModel;
+  if (!selected || !selected.modelId) {
+    const defaultModel = config.get<string>('defaultModel');
+    if (defaultModel && defaultModel.includes(':::')) {
+      const parts = defaultModel.split(':::');
+      selected = { endpointName: parts[0], modelId: parts.slice(1).join(':::') };
+      SimpleSignalDashboard.selectedModel = selected;
+    }
+  }
 
   if (selected && selected.modelId) {
     statusBarItem.text = `$(radio-tower) SimpleSignal: ${selected.modelId}`;

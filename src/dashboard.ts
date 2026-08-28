@@ -406,10 +406,13 @@ export class SimpleSignalDashboard {
     });
 
     const action = await vscode.window.showInformationMessage(
-      `✨ Selected "${message.modelId}" [${message.endpointName}] as active Chat Model! (Copied ID to clipboard)`,
+      `✨ Selected "${message.modelId}" [${message.endpointName}] as active Chat Model!`,
+      'New Chat with Model',
       'Open Chat'
     );
-    if (action === 'Open Chat') {
+    if (action === 'New Chat with Model') {
+      await vscode.commands.executeCommand('workbench.action.chat.newChat');
+    } else if (action === 'Open Chat') {
       await vscode.commands.executeCommand('workbench.action.chat.open');
     }
   }
