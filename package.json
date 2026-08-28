@@ -69,7 +69,7 @@
     "languageModelChatProviders": [
       {
         "vendor": "simplesignal",
-        "displayName": "SimpleSignal: (Active)",
+        "displayName": "⚡ SimpleSignal: (Active)",
         "managementCommand": "simplesignal.manageEndpoints"
       }
     ],

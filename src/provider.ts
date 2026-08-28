@@ -35,7 +35,7 @@ export class SimpleSignalChatProvider implements vscode.LanguageModelChatProvide
     // 1. Dynamic Active Model entry (routes automatically to currently selected model with full tool calling)
     result.push({
       id: 'simplesignal-active',
-      name: 'SimpleSignal: (Active)',
+      name: '⚡ SimpleSignal: (Active)',
       family: activeModelId ? this.deduceFamily(activeModelId) : 'custom',
       version: '1.0',
       maxInputTokens: 131072,
