@@ -434,6 +434,13 @@ class SimpleSignalDashboard {
     }
     _update() {
         this._panel.title = '⚡ SimpleSignal Hub';
+        // Always fetch fresh selected model from configuration
+        const config = vscode.workspace.getConfiguration('simplesignal');
+        const defaultModel = config.get('defaultModel');
+        if (defaultModel && defaultModel.includes(':::')) {
+            const parts = defaultModel.split(':::');
+            SimpleSignalDashboard.selectedModel = { endpointName: parts[0], modelId: parts.slice(1).join(':::') };
+        }
         this._panel.webview.html = this._getHtmlForWebview(this._panel.webview);
     }
     _getHtmlForWebview(_webview) {
@@ -759,39 +766,50 @@ class SimpleSignalDashboard {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 5px 7px;
-      border-radius: 5px;
+      padding: 6px 10px;
+      border-radius: 6px;
       font-size: 11px;
-      margin-bottom: 3px;
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px solid transparent;
-      transition: all 0.2s ease;
+      margin-bottom: 4px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .model-item:hover {
-      background: rgba(255, 255, 255, 0.07);
+      background: rgba(255, 255, 255, 0.09);
+      border-color: rgba(255, 255, 255, 0.22);
     }
 
     .model-item .signal-icon {
-      width: 14px;
-      height: 14px;
+      width: 15px;
+      height: 15px;
       color: rgba(255, 255, 255, 0.35);
       flex-shrink: 0;
-      transition: all 0.3s ease;
+      transition: all 0.25s ease;
     }
 
     /* When Loaded into Memory / VRAM: Signal Icon Lights Up Glowing Neon Green */
     .model-item.is-loaded {
-      background: rgba(0, 255, 136, 0.07);
-      border: 1px solid rgba(0, 255, 136, 0.4);
-      box-shadow: 0 0 10px rgba(0, 255, 136, 0.12);
+      background: linear-gradient(90deg, rgba(0, 255, 136, 0.16) 0%, rgba(0, 255, 136, 0.04) 100%) !important;
+      border: 1.5px solid #00ff88 !important;
+      box-shadow: 0 0 14px rgba(0, 255, 136, 0.25) !important;
     }
 
     .model-item.is-loaded .signal-icon {
       color: #00ff88 !important;
-      filter: drop-shadow(0 0 6px #00ff88) drop-shadow(0 0 12px rgba(0, 255, 136, 0.8));
-      transform: scale(1.18);
+      filter: drop-shadow(0 0 6px #00ff88) drop-shadow(0 0 12px rgba(0, 255, 136, 0.8)) !important;
+      transform: scale(1.2);
       animation: signalPulseGreen 1.8s infinite alternate ease-in-out;
+    }
+
+    .model-item.is-loaded .signal-icon path {
+      stroke: #00ff88 !important;
+    }
+
+    .model-item.is-loaded .signal-icon circle {
+      fill: #00ff88 !important;
     }
 
     @keyframes signalPulseGreen {
@@ -801,16 +819,24 @@ class SimpleSignalDashboard {
 
     /* When Selected for Chat / Active: Signal Icon Lights Up Vivid Gold */
     .model-item.is-selected {
-      background: rgba(255, 230, 0, 0.12);
-      border: 1px solid var(--neon-accent);
-      box-shadow: 0 0 14px var(--neon-glow);
+      background: linear-gradient(90deg, rgba(255, 230, 0, 0.22) 0%, rgba(255, 230, 0, 0.08) 100%) !important;
+      border: 1.5px solid var(--neon-accent) !important;
+      box-shadow: 0 0 16px var(--neon-glow), inset 0 0 10px rgba(255, 230, 0, 0.1) !important;
     }
 
     .model-item.is-selected .signal-icon {
       color: var(--neon-accent) !important;
-      filter: drop-shadow(0 0 8px var(--neon-accent)) drop-shadow(0 0 14px var(--neon-glow));
-      transform: scale(1.22);
+      filter: drop-shadow(0 0 8px var(--neon-accent)) drop-shadow(0 0 16px var(--neon-glow)) !important;
+      transform: scale(1.25);
       animation: signalPulseGold 1.5s infinite alternate ease-in-out;
+    }
+
+    .model-item.is-selected .signal-icon path {
+      stroke: var(--neon-accent) !important;
+    }
+
+    .model-item.is-selected .signal-icon circle {
+      fill: var(--neon-accent) !important;
     }
 
     @keyframes signalPulseGold {
@@ -819,9 +845,9 @@ class SimpleSignalDashboard {
     }
 
     .model-item.is-loaded.is-selected {
-      background: linear-gradient(90deg, rgba(0, 255, 136, 0.08), rgba(255, 230, 0, 0.12));
-      border: 1px solid var(--neon-accent);
-      box-shadow: 0 0 14px var(--neon-glow);
+      background: linear-gradient(90deg, rgba(0, 255, 136, 0.16) 0%, rgba(255, 230, 0, 0.16) 100%) !important;
+      border: 1.5px solid var(--neon-accent) !important;
+      box-shadow: 0 0 18px var(--neon-glow), 0 0 12px rgba(0, 255, 136, 0.4) !important;
     }
 
     .status-badge-container {
@@ -831,19 +857,26 @@ class SimpleSignalDashboard {
       margin-left: 6px;
     }
 
-    .badge-green {
-      background: rgba(0, 255, 136, 0.16);
-      border: 1px solid #00ff88;
-      color: #00ff88;
-      font-weight: 700;
-      font-size: 9px;
-      letter-spacing: 0.5px;
+    .badge-state-sel {
+      background: var(--neon-accent) !important;
+      color: #000 !important;
+      font-weight: 800 !important;
+      font-size: 9px !important;
+      padding: 1px 6px !important;
+      border-radius: 4px !important;
+      letter-spacing: 0.5px !important;
+      box-shadow: 0 0 8px var(--neon-glow) !important;
     }
 
-    .badge-state-sel {
-      font-weight: 700;
-      font-size: 9px;
-      letter-spacing: 0.5px;
+    .badge-state-load {
+      background: #00ff88 !important;
+      color: #000 !important;
+      font-weight: 800 !important;
+      font-size: 9px !important;
+      padding: 1px 6px !important;
+      border-radius: 4px !important;
+      letter-spacing: 0.5px !important;
+      box-shadow: 0 0 8px rgba(0, 255, 136, 0.6) !important;
     }
 
     .btn-dots {
@@ -1705,6 +1738,9 @@ Waiting to run performance test...
         console.error('VsCode API acquire error:', e);
       }
 
+      window.__lastSelectedModel = ${JSON.stringify(SimpleSignalDashboard.selectedModel || null)};
+      window.__lastLoadedKeys = ${JSON.stringify(Array.from(SimpleSignalDashboard.loadedModelKeys))};
+
       let liveStopwatchTimer = null;
       let liveStartTime = 0;
 
@@ -2057,28 +2093,54 @@ Waiting to run performance test...
             menuEl.style.top = top + 'px';
           });
         });
+
+        // Direct click on model item row to select it instantly
+        document.querySelectorAll('.model-item').forEach(function(item) {
+          item.addEventListener('click', function(e) {
+            if (e.target.closest('.card-btn') || e.target.closest('.btn-dots') || e.target.closest('.model-action-menu')) {
+              return;
+            }
+            const ep = this.getAttribute('data-endpoint') || '';
+            const modelId = this.getAttribute('data-model-id') || this.getAttribute('data-model') || '';
+            if (ep && modelId) {
+              window.__lastSelectedModel = { endpointName: ep, modelId: modelId };
+              applyModelStates(window.__lastSelectedModel, window.__lastLoadedKeys || []);
+              post('selectModel', { endpointName: ep, modelId: modelId });
+            }
+          });
+        });
+
+        // Apply initial model states on page load
+        applyModelStates(window.__lastSelectedModel, window.__lastLoadedKeys);
       }
 
       function applyModelStates(selectedModel, loadedKeys) {
-        if (selectedModel !== undefined) window.__lastSelectedModel = selectedModel;
-        if (loadedKeys !== undefined) window.__lastLoadedKeys = loadedKeys;
+        if (selectedModel !== undefined && selectedModel !== null) window.__lastSelectedModel = selectedModel;
+        if (loadedKeys !== undefined && loadedKeys !== null) window.__lastLoadedKeys = loadedKeys;
+
+        const sel = window.__lastSelectedModel;
+        const selEp = sel ? String(sel.endpointName || '').trim().toLowerCase() : '';
+        const selModel = sel ? String(sel.modelId || '').trim().toLowerCase() : '';
 
         document.querySelectorAll('.model-item').forEach(function(item) {
-          const ep = item.getAttribute('data-endpoint') || '';
-          const model = (item.getAttribute('data-model') || '').toLowerCase();
-          const modelRaw = item.getAttribute('data-model-id') || item.getAttribute('data-model') || '';
-          const key = (ep + ':::' + modelRaw).toLowerCase();
+          const ep = String(item.getAttribute('data-endpoint') || '').trim().toLowerCase();
+          const model = String(item.getAttribute('data-model') || '').trim().toLowerCase();
+          const modelRaw = String(item.getAttribute('data-model-id') || item.getAttribute('data-model') || '').trim().toLowerCase();
+          const key = ep + ':::' + modelRaw;
 
-          const isSel = window.__lastSelectedModel &&
-            (window.__lastSelectedModel.modelId.toLowerCase() === model || window.__lastSelectedModel.modelId.toLowerCase() === modelRaw.toLowerCase()) &&
-            (!window.__lastSelectedModel.endpointName || window.__lastSelectedModel.endpointName.toLowerCase() === ep.toLowerCase());
+          const isSel = Boolean(
+            sel &&
+            selModel &&
+            (model === selModel || modelRaw === selModel || (model.length > 3 && selModel.includes(model)) || (selModel.length > 3 && model.includes(selModel))) &&
+            (!selEp || ep === selEp || ep.includes(selEp) || selEp.includes(ep))
+          );
 
           let isLoaded = false;
           if (window.__lastLoadedKeys && Array.isArray(window.__lastLoadedKeys)) {
-            const lkLower = window.__lastLoadedKeys.map(function(k) { return String(k).toLowerCase(); });
+            const lkLower = window.__lastLoadedKeys.map(function(k) { return String(k).trim().toLowerCase(); });
             isLoaded = lkLower.includes(key) ||
               lkLower.includes(model) ||
-              lkLower.includes(modelRaw.toLowerCase()) ||
+              lkLower.includes(modelRaw) ||
               lkLower.some(function(k) {
                 return (k.length > 3 && (k.includes(model) || model.includes(k)));
               });
