@@ -26,41 +26,46 @@ export class SimpleSignalChatParticipant {
 
       // 1. Handle "/models" command
       if (request.command === 'models') {
-        stream.markdown('### 📡 SimpleSignal Available Models\n\n');
+        stream.markdown('## 📡 SimpleSignal Model Directory\n\n');
         let total = 0;
+
         for (const ep of endpoints) {
           if (ep.enabled === false) continue;
           const models = ep.models || [];
           if (models.length === 0) continue;
           total += models.length;
 
-          stream.markdown(`**${ep.name}** (\`${ep.baseUrl}\`):\n`);
+          stream.markdown(`### 🔹 ${ep.name} (\`${ep.baseUrl}\`)\n\n`);
+          stream.markdown('| Model Identifier | Context | Status | Quick Action |\n');
+          stream.markdown('| :--- | :--- | :--- | :--- |\n');
+
           for (const m of models) {
             const isSel = defaultModelSetting && defaultModelSetting.toLowerCase() === `${ep.name}:::${m.id}`.toLowerCase();
-            const activeTag = isSel ? ' ✨ **[ACTIVE]**' : '';
-            stream.markdown(`- \`${m.id}\`${activeTag} — [Switch to this model](command:simplesignal.selectModel?${encodeURIComponent(JSON.stringify({ endpointName: ep.name, model: { id: m.id } }))})\n`);
+            const statusBadge = isSel ? '`✨ Active`' : '`🟢 Available`';
+            const ctxLen = m.contextLength ? `${Math.round(m.contextLength / 1024)}k` : '128k';
+            const switchUrl = `command:simplesignal.selectModel?${encodeURIComponent(JSON.stringify({ endpointName: ep.name, model: { id: m.id } }))}`;
+            stream.markdown(`| **\`${m.id}\`** | ${ctxLen} | ${statusBadge} | [⚡ Switch to Model](${switchUrl}) |\n`);
           }
           stream.markdown('\n');
         }
 
         if (total === 0) {
-          stream.markdown('_No models configured yet. Run Auto-Fetch from the Visual Hub._\n');
+          stream.markdown('> ⚠️ _No models discovered yet. Open the Visual Hub to auto-fetch models._\n');
         }
         return;
       }
 
-      // 2. Handle "/switch" or "/use" command
+      // 2. Handle "/switch" command
       if (request.command === 'switch') {
         const query = request.prompt.trim().toLowerCase();
         if (!query) {
-          stream.markdown('ℹ️ **Usage:** `@simplesignal /switch <model_name_or_keyword>` (e.g. `/switch deepseek` or `/switch qwen`)\n');
+          stream.markdown('> ℹ️ **Usage:** `@simplesignal /switch <model_name_or_keyword>`\n>\n> *Examples: `/switch deepseek` or `/switch qwen`*\n');
           return;
         }
 
         let matchedEp: EndpointConfig | undefined;
         let matchedModel: string | undefined;
 
-        // Search through all endpoints and models
         for (const ep of endpoints) {
           if (ep.enabled === false) continue;
           for (const m of ep.models || []) {
@@ -74,7 +79,6 @@ export class SimpleSignalChatParticipant {
         }
 
         if (!matchedModel && query) {
-          // Check by endpoint name
           for (const ep of endpoints) {
             if (ep.enabled === false) continue;
             if (ep.name.toLowerCase().includes(query) && ep.models && ep.models.length > 0) {
@@ -100,9 +104,9 @@ export class SimpleSignalChatParticipant {
             statusBarItem.show();
           }
 
-          stream.markdown(`✨ **Active Model Switched!**\n\n- **Model:** \`${matchedModel}\`\n- **Provider:** \`${matchedEp.name}\`\n- **Route:** \`${compKey}\`\n\n_All subsequent queries will execute directly against this model._\n`);
+          stream.markdown(`> ### ⚡ SimpleSignal Route Updated\n>\n> - **Active Model:** \`${matchedModel}\`\n> - **Provider Engine:** \`${matchedEp.name}\`\n> - **Status:** 🟢 Connected & Ready\n>\n> _All prompt requests will now execute against this model._\n`);
         } else {
-          stream.markdown(`❌ No model matching \`${query}\` found. Type \`@simplesignal /models\` to view all available options.\n`);
+          stream.markdown(`> ❌ **No match for** \`${query}\`\n>\n> Type \`@simplesignal /models\` to view all registered engines and identifiers.\n`);
         }
         return;
       }
@@ -121,7 +125,14 @@ export class SimpleSignalChatParticipant {
         }
 
         const totalModels = endpoints.reduce((sum, ep) => sum + (ep.models?.length || 0), 0);
-        stream.markdown(`### ⚡ SimpleSignal Status\n\n- **Active Model:** \`${activeModelId}\`\n- **Active Provider:** \`${activeEpName}\`\n- **Total Available Models:** ${totalModels} across ${endpoints.length} endpoints\n- **Memory Tracker:** Live telemetry tracking enabled\n`);
+        stream.markdown(`## ⚡ SimpleSignal System Status\n\n`);
+        stream.markdown('| Property | Current State |\n');
+        stream.markdown('| :--- | :--- |\n');
+        stream.markdown(`| **Active Model** | \`${activeModelId}\` |\n`);
+        stream.markdown(`| **Active Provider** | \`${activeEpName}\` |\n`);
+        stream.markdown(`| **Configured Endpoints** | \`${endpoints.length}\` engines |\n`);
+        stream.markdown(`| **Total Models** | \`${totalModels}\` available |\n`);
+        stream.markdown(`| **Telemetry & Metrics** | 🟢 Real-time Tracker Active |\n`);
         return;
       }
 
@@ -149,7 +160,7 @@ export class SimpleSignalChatParticipant {
       }
 
       if (!targetEndpoint || !actualModelId) {
-        stream.markdown('⚠️ **No active model selected.** Please open the Visual Hub (`SimpleSignal: Open Visual Hub Dashboard`) or type `@simplesignal /models` to pick a model.\n');
+        stream.markdown('> ⚠️ **No active model selected.** Please open the Visual Hub or type `@simplesignal /models` to pick a model.\n');
         return;
       }
 
@@ -197,6 +208,7 @@ export class SimpleSignalChatParticipant {
       let fullCompletion = '';
       let completionTokens = 0;
       let isSuccess = false;
+      let inThinkingBlock = false;
 
       for (const apiKey of candidateKeys) {
         try {
@@ -260,12 +272,31 @@ export class SimpleSignalChatParticipant {
 
               try {
                 const parsed = JSON.parse(dataStr);
-                const delta = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.text || '';
-                if (delta) {
-                  fullCompletion += delta;
-                  completionTokens += Math.max(1, Math.ceil(delta.length / 3.8));
-                  stream.markdown(delta);
-                  ModelTelemetryTracker.updateChunk(stats.id, delta, false);
+                const choice = parsed.choices?.[0];
+                if (!choice) continue;
+
+                const delta = choice.delta;
+                if (!delta) continue;
+
+                if (delta.reasoning_content) {
+                  if (!inThinkingBlock) {
+                    stream.markdown('> 💭 *Reasoning Process:*\n> \n');
+                    inThinkingBlock = true;
+                  }
+                  stream.markdown(delta.reasoning_content);
+                  ModelTelemetryTracker.updateChunk(stats.id, delta.reasoning_content, true);
+                }
+
+                const content = delta.content || choice.text || '';
+                if (content) {
+                  if (inThinkingBlock) {
+                    stream.markdown('\n\n---\n\n');
+                    inThinkingBlock = false;
+                  }
+                  fullCompletion += content;
+                  completionTokens += Math.max(1, Math.ceil(content.length / 3.8));
+                  stream.markdown(content);
+                  ModelTelemetryTracker.updateChunk(stats.id, content, false);
                 }
               } catch {}
             }
@@ -275,7 +306,7 @@ export class SimpleSignalChatParticipant {
           break;
         } catch (err: any) {
           if (apiKey === candidateKeys[candidateKeys.length - 1]) {
-            stream.markdown(`\n\n❌ **Error from ${targetEndpoint.name}:** ${err.message || err}\n`);
+            stream.markdown(`\n\n> ❌ **Error from ${targetEndpoint.name}:** ${err.message || err}\n`);
             ModelTelemetryTracker.failMessage(stats.id, err.message || String(err));
             return;
           }
@@ -286,6 +317,8 @@ export class SimpleSignalChatParticipant {
         const finalStats = ModelTelemetryTracker.completeMessage(stats.id);
         if (finalStats) {
           outputChannel.appendLine(`[SimpleSignal Chat] Completed ${actualModelId} in ${finalStats.totalDurationMs}ms (${finalStats.tokensPerSec.toFixed(1)} tok/s)`);
+          // Subtle, clean telemetry footer
+          stream.markdown(`\n\n---\n*⚡ SimpleSignal • ${actualModelId} • ${finalStats.tokensPerSec.toFixed(1)} tok/s • ${finalStats.totalDurationMs}ms*`);
         }
       }
     };
