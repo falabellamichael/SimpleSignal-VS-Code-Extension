@@ -249,30 +249,9 @@ export class SimpleSignalChatParticipant {
 
           const reader = (res.body as any).getReader();
           const decoder = new TextDecoder();
-          const openThinkingTag = '🧠 **Thought Process**\n```thinking\n';
-          const closeThinkingTag = '\n```\n\n';
+          const openThinkingTag = '---\n🧠 **Thought Process**\n\n*';
+          const closeThinkingTag = '*\n\n---\n\n';
           let buffer = '';
-          let reasoningLineLen = 0;
-
-          const wrapReasoning = (chunk: string, maxLen = 78): string => {
-            let res = '';
-            for (let i = 0; i < chunk.length; i++) {
-              const ch = chunk[i];
-              if (ch === '\n') {
-                res += '\n';
-                reasoningLineLen = 0;
-              } else {
-                if (reasoningLineLen >= maxLen && (ch === ' ' || ch === '\t')) {
-                  res += '\n';
-                  reasoningLineLen = 0;
-                } else {
-                  res += ch;
-                  reasoningLineLen++;
-                }
-              }
-            }
-            return res;
-          };
 
           while (true) {
             if (token.isCancellationRequested) {
@@ -305,10 +284,8 @@ export class SimpleSignalChatParticipant {
                   if (!inThinkingBlock) {
                     stream.markdown(openThinkingTag);
                     inThinkingBlock = true;
-                    reasoningLineLen = 0;
                   }
-                  const wrapped = wrapReasoning(delta.reasoning_content);
-                  stream.markdown(wrapped);
+                  stream.markdown(delta.reasoning_content);
                   ModelTelemetryTracker.updateChunk(stats.id, delta.reasoning_content, true);
                 }
 
@@ -317,20 +294,15 @@ export class SimpleSignalChatParticipant {
                   if (inThinkingBlock && !delta.reasoning_content) {
                     stream.markdown(closeThinkingTag);
                     inThinkingBlock = false;
-                    reasoningLineLen = 0;
                   }
 
                   if (content.includes('<think>')) {
                     inThinkingBlock = true;
-                    reasoningLineLen = 0;
                     content = content.replace(/<think>/g, openThinkingTag);
                   }
                   if (content.includes('</think>')) {
                     inThinkingBlock = false;
-                    reasoningLineLen = 0;
                     content = content.replace(/<\/think>/g, closeThinkingTag);
-                  } else if (inThinkingBlock) {
-                    content = wrapReasoning(content);
                   }
 
                   fullCompletion += content;
