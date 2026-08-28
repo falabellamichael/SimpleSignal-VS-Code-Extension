@@ -189,8 +189,9 @@ class ModelFetcher {
         const candidateKeys = (0, utils_1.getApiKeyCandidates)(endpoint);
         if (candidateKeys.length === 0)
             candidateKeys.push('');
+        const isLocal = baseUrl.includes('127.0.0.1') || baseUrl.includes('localhost') || baseUrl.includes('0.0.0.0');
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
+        const timeout = setTimeout(() => controller.abort(), isLocal ? 1500 : 7000);
         try {
             if (protocol === 'ollama') {
                 const headers = {

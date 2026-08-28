@@ -113,6 +113,13 @@ class SimpleSignalDashboard {
                     case 'testEndpoint':
                         await this.testEndpoint(message.name);
                         break;
+                    case 'retryEndpoint':
+                        await this.testEndpoint(message.name);
+                        break;
+                    case 'retryConnections':
+                        await vscode.commands.executeCommand('simplesignal.autoFetchModels');
+                        this._update();
+                        break;
                     case 'getTelemetry':
                         await this.sendTelemetryData();
                         break;
@@ -1388,6 +1395,7 @@ class SimpleSignalDashboard {
   <div id="tab-endpoints" class="tab-content active">
     <div class="actions-bar">
       <button class="btn" id="btnAutoFetch">⚡ Auto-Fetch & Fill JSON</button>
+      <button class="btn btn-secondary" id="btnRetryConnections" title="Retry all endpoint connections on demand">🔄 Retry Connections</button>
       <button class="btn btn-secondary" id="btnSettings">⚙️ Settings JSON</button>
       <button class="btn btn-secondary" id="btnGitHub">
         <svg height="13" width="13" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: -1px; margin-right: 4px;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
@@ -1422,7 +1430,7 @@ class SimpleSignalDashboard {
                 <path d="M 86.29 202.29 A 240 240 0 0 1 425.71 202.29" stroke-width="40" />
                 <path d="M 142.86 258.86 A 160 160 0 0 1 369.14 258.86" stroke-width="40" />
                 <path d="M 199.43 315.43 A 80 80 0 0 1 312.57 315.43" stroke-width="40" />
-                <circle cx="256" cy="372" r="30" fill="currentColor" stroke="none" />
+                <circle cx="256" cy="372" r="28" fill="currentColor" stroke="none" />
               </svg>
               ${ep.name}
             </h3>
@@ -1459,28 +1467,26 @@ class SimpleSignalDashboard {
                       <path d="M 199.43 315.43 A 80 80 0 0 1 312.57 315.43" stroke-width="42" />
                       <circle cx="256" cy="372" r="32" fill="currentColor" stroke="none" />
                     </svg>
-                    <span style="font-family: monospace; font-size: 11px; font-weight: 600;">${m.id}</span>
+                    <span class="model-name" title="${m.id}">${m.id}</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
                     <span class="status-badge-container">
                       ${isSel ? '<span class="badge badge-neon badge-state-sel">✨ ACTIVE</span>' : ''}
                       ${isLoaded ? '<span class="badge badge-green badge-state-load">⚡ LOADED</span>' : ''}
                     </span>
-                  </div>
-                  <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
-                    ${m.supportsVision ? '<span class="badge" title="Vision Capable">👁️</span>' : ''}
-                    ${m.supportsTools ? '<span class="badge" title="Function Calling / Tools">🛠️</span>' : ''}
-                    <button class="card-btn" style="padding: 2px 6px; font-size: 9px;" onclick="window.selectModelForBench('${ep.name}', '${m.id}')" title="Test this model">⚡ Test</button>
                     <button class="card-btn btn-dots" data-endpoint="${ep.name}" data-model="${m.id}" data-type="${isLocal ? 'local' : 'api'}" title="Actions">•••</button>
                   </div>
                 </div>`;
                 })
                     .join('')
-                : '<div style="color: var(--muted-text); font-size: 12px; padding: 6px;">No models fetched yet. Click "Auto-Fetch".</div>'}
+                : '<div style="color: var(--muted-text); font-size: 12px; padding: 6px;">No models fetched yet. Click "Auto-Fetch" or "Retry".</div>'}
             </div>
           </div>
 
 
           <div class="card-footer">
-            <button class="card-btn" data-action="test" data-endpoint="${ep.name}">🧪 Test Signal</button>
+            <button class="card-btn" data-action="test" data-endpoint="${ep.name}">🧪 Test</button>
+            <button class="card-btn" data-action="retry" data-endpoint="${ep.name}">🔄 Retry</button>
             <button class="card-btn" data-action="toggle" data-endpoint="${ep.name}">${isEnabled ? 'Disable' : 'Enable'}</button>
           </div>
         </div>`;
@@ -1814,6 +1820,9 @@ Waiting to run performance test...
         const btnAutoFetch = document.getElementById('btnAutoFetch');
         if (btnAutoFetch) btnAutoFetch.addEventListener('click', function() { post('autoFetch'); });
 
+        const btnRetryConnections = document.getElementById('btnRetryConnections');
+        if (btnRetryConnections) btnRetryConnections.addEventListener('click', function() { post('retryConnections'); });
+
         const btnSettings = document.getElementById('btnSettings');
         if (btnSettings) btnSettings.addEventListener('click', function() { post('openSettings'); });
 
@@ -1939,13 +1948,15 @@ Waiting to run performance test...
           });
         }
 
-        // Endpoint card buttons (test / toggle)
+        // Endpoint card buttons (test / retry / toggle)
         document.querySelectorAll('.card-btn').forEach(function(btn) {
           btn.addEventListener('click', function(e) {
             const action = this.getAttribute('data-action');
             const ep = this.getAttribute('data-endpoint');
             if (action === 'test' && ep) {
               post('testEndpoint', { name: ep });
+            } else if (action === 'retry' && ep) {
+              post('retryEndpoint', { name: ep });
             } else if (action === 'toggle' && ep) {
               post('toggleEndpoint', { name: ep });
             }
