@@ -63,21 +63,19 @@ class SimpleSignalChatProvider {
             activeModelId = parts.slice(1).join(':::');
         }
         // 1. Dynamic Active Model entry (routes automatically to currently selected model)
-        if (activeModelId && activeEndpointName) {
-            result.push({
-                id: 'simplesignal-active',
-                name: `⚡ SimpleSignal: Active (${activeModelId})`,
-                family: this.deduceFamily(activeModelId),
-                version: '1.0',
-                maxInputTokens: 131072,
-                maxOutputTokens: 8192,
-                capabilities: {
-                    vision: true,
-                    toolCalling: true,
-                },
-            });
-        }
-        // 2. Add all configured models
+        result.push({
+            id: 'simplesignal-active',
+            name: 'SimpleSignal',
+            family: activeModelId ? this.deduceFamily(activeModelId) : 'custom',
+            version: '1.0',
+            maxInputTokens: 131072,
+            maxOutputTokens: 8192,
+            capabilities: {
+                vision: true,
+                toolCalling: true,
+            },
+        });
+        // 2. Add all configured models with clean names
         for (const ep of endpoints) {
             if (ep.enabled === false) {
                 continue;
@@ -88,13 +86,7 @@ class SimpleSignalChatProvider {
                     continue;
                 }
                 const compositeId = `${ep.name}:::${m.id}`;
-                const isSelected = activeEndpointName &&
-                    activeModelId &&
-                    ep.name.toLowerCase() === activeEndpointName.toLowerCase() &&
-                    m.id.toLowerCase() === activeModelId.toLowerCase();
-                const displayName = isSelected
-                    ? `⭐ ${m.name || m.id} (${ep.name}) [Active]`
-                    : `${m.name || m.id} (${ep.name})`;
+                const displayName = m.id;
                 const family = this.deduceFamily(m.id);
                 const info = {
                     id: compositeId,
@@ -108,13 +100,7 @@ class SimpleSignalChatProvider {
                         toolCalling: m.supportsTools ?? true,
                     },
                 };
-                if (isSelected) {
-                    // Place active model at front
-                    result.splice(result.length > 0 && result[0].id === 'simplesignal-active' ? 1 : 0, 0, info);
-                }
-                else {
-                    result.push(info);
-                }
+                result.push(info);
             }
         }
         return result;

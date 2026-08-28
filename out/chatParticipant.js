@@ -167,8 +167,6 @@ class SimpleSignalChatParticipant {
                 return;
             }
             outputChannel.appendLine(`[SimpleSignal Chat] Dispatching query to "${targetEndpoint.name}" for model "${actualModelId}"`);
-            // Header indicator in chat stream
-            stream.markdown(`⚡ *[${targetEndpoint.name} • ${actualModelId}]*\n\n`);
             const estimatedPromptTokens = Math.max(1, Math.ceil(request.prompt.length / 3.8));
             const stats = telemetryTracker_1.ModelTelemetryTracker.startMessage({
                 modelId: actualModelId,
