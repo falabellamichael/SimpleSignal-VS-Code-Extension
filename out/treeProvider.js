@@ -39,8 +39,24 @@ class SimpleSignalTreeDataProvider {
     extensionUri;
     _onDidChangeTreeData = new vscode.EventEmitter();
     onDidChangeTreeData = this._onDidChangeTreeData.event;
+    selectedModel;
+    loadedModels = new Set();
     constructor(extensionUri) {
         this.extensionUri = extensionUri;
+        const config = vscode.workspace.getConfiguration('simplesignal');
+        const defaultModel = config.get('defaultModel');
+        if (defaultModel && defaultModel.includes(':::')) {
+            const parts = defaultModel.split(':::');
+            this.selectedModel = { endpointName: parts[0], modelId: parts.slice(1).join(':::') };
+        }
+    }
+    setSelectedModel(endpointName, modelId) {
+        this.selectedModel = { endpointName, modelId };
+        this.refresh();
+    }
+    setLoadedModels(keys) {
+        this.loadedModels = new Set(keys.map((k) => k.toLowerCase()));
+        this.refresh();
     }
     getSignalLogoIcon() {
         if (this.extensionUri) {
@@ -178,9 +194,28 @@ class SimpleSignalTreeDataProvider {
             badges.push('🛠️');
         const isLocal = this.isLocalEndpoint(endpointName);
         const contextVal = isLocal ? 'model_item_local' : 'model_item_api';
-        const node = new TreeItemNode(model.id, vscode.TreeItemCollapsibleState.None, contextVal, this.getSignalLogoIcon());
+        const isSelected = this.selectedModel &&
+            this.selectedModel.modelId.toLowerCase() === model.id.toLowerCase() &&
+            (!this.selectedModel.endpointName || this.selectedModel.endpointName.toLowerCase() === endpointName.toLowerCase());
+        const key = `${endpointName}:::${model.id}`.toLowerCase();
+        const isLoaded = this.loadedModels.has(key) ||
+            this.loadedModels.has(model.id.toLowerCase()) ||
+            Array.from(this.loadedModels).some((k) => k.length > 3 && (k.includes(model.id.toLowerCase()) || model.id.toLowerCase().includes(k)));
+        let icon;
+        if (isSelected) {
+            icon = new vscode.ThemeIcon('radio-tower', new vscode.ThemeColor('charts.yellow'));
+            badges.unshift('✨ [ACTIVE]');
+        }
+        else if (isLoaded) {
+            icon = new vscode.ThemeIcon('zap', new vscode.ThemeColor('charts.green'));
+            badges.unshift('⚡ [LOADED]');
+        }
+        else {
+            icon = this.getSignalLogoIcon();
+        }
+        const node = new TreeItemNode(model.id, vscode.TreeItemCollapsibleState.None, contextVal, icon);
         node.description = `${badges.join(' ')} [${endpointName}]`;
-        node.tooltip = `Model: ${model.id}\nEndpoint: ${endpointName}\nType: ${isLocal ? 'Local Server' : 'Cloud API'}\nContext Window: ${model.contextLength || 131072} tokens\nVision: ${model.supportsVision ? 'Yes' : 'No'}\nTools: ${model.supportsTools ? 'Yes' : 'No'}`;
+        node.tooltip = `Model: ${model.id}\nEndpoint: ${endpointName}\nStatus: ${isSelected ? 'Selected Active Model' : isLoaded ? 'Loaded in Memory' : 'Available'}\nType: ${isLocal ? 'Local Server' : 'Cloud API'}\nContext Window: ${model.contextLength || 131072} tokens\nVision: ${model.supportsVision ? 'Yes' : 'No'}\nTools: ${model.supportsTools ? 'Yes' : 'No'}`;
         node.model = model;
         node.endpointName = endpointName;
         return node;

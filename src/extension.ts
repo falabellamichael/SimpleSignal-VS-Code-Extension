@@ -33,6 +33,16 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(statusBarItem);
   updateStatusBar(statusBarItem);
 
+  // Hook up Dashboard state changes to Sidebar TreeDataProvider and StatusBar
+  SimpleSignalDashboard.onModelSelectionChanged = (endpointName, modelId) => {
+    treeDataProvider.setSelectedModel(endpointName, modelId);
+    updateStatusBar(statusBarItem);
+  };
+
+  SimpleSignalDashboard.onLoadedModelsChanged = (keys) => {
+    treeDataProvider.setLoadedModels(keys);
+  };
+
   let resetStatusBarTimer: any = null;
   // Subscribe to live model telemetry for real-time status bar updates
   context.subscriptions.push(
@@ -611,6 +621,11 @@ export function activate(context: vscode.ExtensionContext) {
       async () => {
         const res = await SystemDiagnostics.loadModel(target, modelId);
         if (res.success) {
+          SimpleSignalDashboard.loadedModelKeys.add(`${endpointName}:::${modelId}`);
+          SimpleSignalDashboard.loadedModelKeys.add(modelId);
+          SimpleSignalDashboard.loadedModelKeys.add(modelId.toLowerCase());
+          SimpleSignalDashboard.onLoadedModelsChanged?.(Array.from(SimpleSignalDashboard.loadedModelKeys));
+          treeDataProvider.setLoadedModels(Array.from(SimpleSignalDashboard.loadedModelKeys));
           vscode.window.showInformationMessage(`⚡ ${res.message}`);
         } else {
           vscode.window.showErrorMessage(`Failed to load "${modelId}": ${res.message}`);
@@ -663,6 +678,11 @@ export function activate(context: vscode.ExtensionContext) {
       async () => {
         const res = await SystemDiagnostics.unloadModel(target, modelId);
         if (res.success) {
+          SimpleSignalDashboard.loadedModelKeys.delete(`${endpointName}:::${modelId}`);
+          SimpleSignalDashboard.loadedModelKeys.delete(modelId);
+          SimpleSignalDashboard.loadedModelKeys.delete(modelId.toLowerCase());
+          SimpleSignalDashboard.onLoadedModelsChanged?.(Array.from(SimpleSignalDashboard.loadedModelKeys));
+          treeDataProvider.setLoadedModels(Array.from(SimpleSignalDashboard.loadedModelKeys));
           vscode.window.showInformationMessage(`🛑 ${res.message}`);
         } else {
           vscode.window.showErrorMessage(`Failed to unload "${modelId}": ${res.message}`);
@@ -674,8 +694,8 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Select model command
   const selectModelCmd = vscode.commands.registerCommand('simplesignal.selectModel', async (node?: any) => {
-    const modelId = node?.model?.id || node?.label;
-    const epName = node?.endpointName || 'SimpleSignal';
+    let modelId = node?.model?.id || node?.label;
+    let epName = node?.endpointName || 'SimpleSignal';
 
     if (!modelId) {
       const config = vscode.workspace.getConfiguration('simplesignal');
@@ -694,23 +714,24 @@ export function activate(context: vscode.ExtensionContext) {
       }
       const picked = await vscode.window.showQuickPick(items, {
         title: 'SimpleSignal: Select Model for VS Code Chat',
-        placeHolder: 'Select a model to copy ID & use in chat',
+        placeHolder: 'Select a model to set as active and copy ID',
       });
       if (!picked) return;
-      await vscode.env.clipboard.writeText(picked.modelId);
-      const action = await vscode.window.showInformationMessage(
-        `✨ Selected "${picked.modelId}" [${picked.epName}]! (Copied ID to clipboard)`,
-        'Open Chat'
-      );
-      if (action === 'Open Chat') {
-        await vscode.commands.executeCommand('workbench.action.chat.open');
-      }
-      return;
+      modelId = picked.modelId;
+      epName = picked.epName;
     }
 
+    const config = vscode.workspace.getConfiguration('simplesignal');
+    await config.update('defaultModel', `${epName}:::${modelId}`, vscode.ConfigurationTarget.Global);
     await vscode.env.clipboard.writeText(modelId);
+
+    SimpleSignalDashboard.selectedModel = { endpointName: epName, modelId };
+    SimpleSignalDashboard.onModelSelectionChanged?.(epName, modelId);
+    treeDataProvider.setSelectedModel(epName, modelId);
+    updateStatusBar(statusBarItem);
+
     const action = await vscode.window.showInformationMessage(
-      `✨ Selected "${modelId}" [${epName}]! (Copied ID to clipboard)`,
+      `✨ Selected "${modelId}" [${epName}] as active Chat Model! (Copied ID to clipboard)`,
       'Open Chat'
     );
     if (action === 'Open Chat') {
@@ -798,11 +819,19 @@ function updateStatusBar(statusBarItem: vscode.StatusBarItem) {
   const endpoints = config.get<EndpointConfig[]>('endpoints', []);
   const totalModels = endpoints.reduce((sum, ep) => sum + (ep.models?.length || 0), 0);
 
-  if (totalModels > 0) {
+  const selected = SimpleSignalDashboard.selectedModel;
+
+  if (selected && selected.modelId) {
+    statusBarItem.text = `$(radio-tower) SimpleSignal: ${selected.modelId}`;
+    statusBarItem.tooltip = `Active Model: ${selected.modelId} [${selected.endpointName}]\nTotal Available Models: ${totalModels} across ${endpoints.length} endpoints\nClick to manage models & settings`;
+    statusBarItem.backgroundColor = undefined;
+  } else if (totalModels > 0) {
     statusBarItem.text = `$(radio-tower) SimpleSignal: ${totalModels} Models`;
+    statusBarItem.tooltip = `SimpleSignal: ${totalModels} models active across ${endpoints.length} endpoints\nClick to manage models & settings`;
     statusBarItem.backgroundColor = undefined;
   } else {
     statusBarItem.text = `$(warning) SimpleSignal: 0 Models`;
+    statusBarItem.tooltip = 'No AI models loaded. Click to configure endpoints & auto-fetch models.';
   }
   statusBarItem.show();
 }

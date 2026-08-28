@@ -7,6 +7,11 @@ import { ModelTelemetryTracker } from './telemetryTracker';
 
 export class SimpleSignalDashboard {
   public static currentPanel: SimpleSignalDashboard | undefined;
+  public static selectedModel?: { endpointName: string; modelId: string };
+  public static loadedModelKeys = new Set<string>();
+  public static onModelSelectionChanged?: (endpointName: string, modelId: string) => void;
+  public static onLoadedModelsChanged?: (keys: string[]) => void;
+
   private readonly _panel: vscode.WebviewPanel;
   private _disposables: vscode.Disposable[] = [];
 
@@ -36,6 +41,15 @@ export class SimpleSignalDashboard {
 
   private constructor(panel: vscode.WebviewPanel, private readonly _extensionUri: vscode.Uri) {
     this._panel = panel;
+
+    // Load initial selected model from settings
+    const config = vscode.workspace.getConfiguration('simplesignal');
+    const defaultModel = config.get<string>('defaultModel');
+    if (defaultModel && defaultModel.includes(':::')) {
+      const parts = defaultModel.split(':::');
+      SimpleSignalDashboard.selectedModel = { endpointName: parts[0], modelId: parts.slice(1).join(':::') };
+    }
+
     this._update();
 
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
@@ -175,6 +189,14 @@ export class SimpleSignalDashboard {
       const activeMessage = ModelTelemetryTracker.getActiveStats();
       const messageHistory = ModelTelemetryTracker.getHistory();
 
+      // Automatically register any models currently detected in GPU VRAM / RAM
+      for (const m of loadedModels) {
+        if (m.name) {
+          SimpleSignalDashboard.loadedModelKeys.add(m.name);
+          SimpleSignalDashboard.loadedModelKeys.add(m.name.toLowerCase());
+        }
+      }
+
       this._panel.webview.postMessage({
         type: 'telemetryUpdate',
         ram,
@@ -184,6 +206,8 @@ export class SimpleSignalDashboard {
         lastMessage,
         activeMessage,
         messageHistory,
+        selectedModel: SimpleSignalDashboard.selectedModel,
+        loadedKeys: Array.from(SimpleSignalDashboard.loadedModelKeys),
       });
     } catch (e) {
       // ignore
@@ -292,6 +316,18 @@ export class SimpleSignalDashboard {
       async () => {
         const res = await SystemDiagnostics.loadModel(target, message.modelId);
         if (res.success) {
+          SimpleSignalDashboard.loadedModelKeys.add(`${message.endpointName}:::${message.modelId}`);
+          SimpleSignalDashboard.loadedModelKeys.add(message.modelId);
+          SimpleSignalDashboard.loadedModelKeys.add(message.modelId.toLowerCase());
+
+          SimpleSignalDashboard.onLoadedModelsChanged?.(Array.from(SimpleSignalDashboard.loadedModelKeys));
+
+          this._panel.webview.postMessage({
+            type: 'modelStateUpdate',
+            selectedModel: SimpleSignalDashboard.selectedModel,
+            loadedKeys: Array.from(SimpleSignalDashboard.loadedModelKeys),
+          });
+
           vscode.window.showInformationMessage(`⚡ ${res.message}`);
         } else {
           vscode.window.showErrorMessage(`Failed to load "${message.modelId}": ${res.message}`);
@@ -319,6 +355,18 @@ export class SimpleSignalDashboard {
       async () => {
         const res = await SystemDiagnostics.unloadModel(target, message.modelId);
         if (res.success) {
+          SimpleSignalDashboard.loadedModelKeys.delete(`${message.endpointName}:::${message.modelId}`);
+          SimpleSignalDashboard.loadedModelKeys.delete(message.modelId);
+          SimpleSignalDashboard.loadedModelKeys.delete(message.modelId.toLowerCase());
+
+          SimpleSignalDashboard.onLoadedModelsChanged?.(Array.from(SimpleSignalDashboard.loadedModelKeys));
+
+          this._panel.webview.postMessage({
+            type: 'modelStateUpdate',
+            selectedModel: SimpleSignalDashboard.selectedModel,
+            loadedKeys: Array.from(SimpleSignalDashboard.loadedModelKeys),
+          });
+
           vscode.window.showInformationMessage(`🛑 ${res.message}`);
         } else {
           vscode.window.showErrorMessage(`Failed to unload "${message.modelId}": ${res.message}`);
@@ -329,9 +377,24 @@ export class SimpleSignalDashboard {
   }
 
   private async handleSelectModel(message: { endpointName: string; modelId: string }) {
+    SimpleSignalDashboard.selectedModel = { endpointName: message.endpointName, modelId: message.modelId };
+
+    const config = vscode.workspace.getConfiguration('simplesignal');
+    await config.update('defaultModel', `${message.endpointName}:::${message.modelId}`, vscode.ConfigurationTarget.Global);
     await vscode.env.clipboard.writeText(message.modelId);
+
+    // Notify TreeDataProvider and StatusBar
+    SimpleSignalDashboard.onModelSelectionChanged?.(message.endpointName, message.modelId);
+
+    // Post to webview to instantly light up icon
+    this._panel.webview.postMessage({
+      type: 'modelStateUpdate',
+      selectedModel: SimpleSignalDashboard.selectedModel,
+      loadedKeys: Array.from(SimpleSignalDashboard.loadedModelKeys),
+    });
+
     const action = await vscode.window.showInformationMessage(
-      `✨ Selected "${message.modelId}" [${message.endpointName}]! (Copied ID to clipboard)`,
+      `✨ Selected "${message.modelId}" [${message.endpointName}] as active Chat Model! (Copied ID to clipboard)`,
       'Open Chat'
     );
     if (action === 'Open Chat') {
@@ -726,16 +789,91 @@ export class SimpleSignalDashboard {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 4px 6px;
-      border-radius: 4px;
+      padding: 5px 7px;
+      border-radius: 5px;
       font-size: 11px;
       margin-bottom: 3px;
       background: rgba(255, 255, 255, 0.02);
-      transition: background 0.15s ease;
+      border: 1px solid transparent;
+      transition: all 0.2s ease;
     }
 
     .model-item:hover {
       background: rgba(255, 255, 255, 0.07);
+    }
+
+    .model-item .signal-icon {
+      width: 14px;
+      height: 14px;
+      color: rgba(255, 255, 255, 0.35);
+      flex-shrink: 0;
+      transition: all 0.3s ease;
+    }
+
+    /* When Loaded into Memory / VRAM: Signal Icon Lights Up Glowing Neon Green */
+    .model-item.is-loaded {
+      background: rgba(0, 255, 136, 0.07);
+      border: 1px solid rgba(0, 255, 136, 0.4);
+      box-shadow: 0 0 10px rgba(0, 255, 136, 0.12);
+    }
+
+    .model-item.is-loaded .signal-icon {
+      color: #00ff88 !important;
+      filter: drop-shadow(0 0 6px #00ff88) drop-shadow(0 0 12px rgba(0, 255, 136, 0.8));
+      transform: scale(1.18);
+      animation: signalPulseGreen 1.8s infinite alternate ease-in-out;
+    }
+
+    @keyframes signalPulseGreen {
+      0% { filter: drop-shadow(0 0 4px #00ff88); opacity: 0.85; }
+      100% { filter: drop-shadow(0 0 10px #00ff88) drop-shadow(0 0 16px #00ff88); opacity: 1; }
+    }
+
+    /* When Selected for Chat / Active: Signal Icon Lights Up Vivid Gold */
+    .model-item.is-selected {
+      background: rgba(255, 230, 0, 0.12);
+      border: 1px solid var(--neon-accent);
+      box-shadow: 0 0 14px var(--neon-glow);
+    }
+
+    .model-item.is-selected .signal-icon {
+      color: var(--neon-accent) !important;
+      filter: drop-shadow(0 0 8px var(--neon-accent)) drop-shadow(0 0 14px var(--neon-glow));
+      transform: scale(1.22);
+      animation: signalPulseGold 1.5s infinite alternate ease-in-out;
+    }
+
+    @keyframes signalPulseGold {
+      0% { filter: drop-shadow(0 0 4px var(--neon-accent)); opacity: 0.9; }
+      100% { filter: drop-shadow(0 0 12px var(--neon-accent)) drop-shadow(0 0 18px var(--neon-accent)); opacity: 1; }
+    }
+
+    .model-item.is-loaded.is-selected {
+      background: linear-gradient(90deg, rgba(0, 255, 136, 0.08), rgba(255, 230, 0, 0.12));
+      border: 1px solid var(--neon-accent);
+      box-shadow: 0 0 14px var(--neon-glow);
+    }
+
+    .status-badge-container {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: 6px;
+    }
+
+    .badge-green {
+      background: rgba(0, 255, 136, 0.16);
+      border: 1px solid #00ff88;
+      color: #00ff88;
+      font-weight: 700;
+      font-size: 9px;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-state-sel {
+      font-weight: 700;
+      font-size: 9px;
+      letter-spacing: 0.5px;
     }
 
     .btn-dots {
@@ -1302,26 +1440,38 @@ export class SimpleSignalDashboard {
               ${
                 models.length > 0
                   ? models
-                      .map(
-                        (m) => `
-                <div class="model-item" data-model="${m.id.toLowerCase()}" data-endpoint="${ep.name}">
+                      .map((m) => {
+                        const isSel = SimpleSignalDashboard.selectedModel &&
+                          (SimpleSignalDashboard.selectedModel.modelId.toLowerCase() === m.id.toLowerCase()) &&
+                          (!SimpleSignalDashboard.selectedModel.endpointName || SimpleSignalDashboard.selectedModel.endpointName.toLowerCase() === ep.name.toLowerCase());
+                        const key = `${ep.name}:::${m.id}`;
+                        const isLoaded = SimpleSignalDashboard.loadedModelKeys.has(key) ||
+                          SimpleSignalDashboard.loadedModelKeys.has(m.id) ||
+                          SimpleSignalDashboard.loadedModelKeys.has(m.id.toLowerCase());
+
+                        return `
+                <div class="model-item ${isSel ? 'is-selected' : ''} ${isLoaded ? 'is-loaded' : ''}" data-model="${m.id.toLowerCase()}" data-model-id="${m.id}" data-endpoint="${ep.name}">
                   <div style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; margin-right: 6px;">
-                    <svg style="width: 12px; height: 12px; color: var(--neon-accent); flex-shrink: 0;" viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                    <svg class="signal-icon" viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M 86.29 202.29 A 240 240 0 0 1 425.71 202.29" stroke-width="42" />
                       <path d="M 142.86 258.86 A 160 160 0 0 1 369.14 258.86" stroke-width="42" />
                       <path d="M 199.43 315.43 A 80 80 0 0 1 312.57 315.43" stroke-width="42" />
                       <circle cx="256" cy="372" r="32" fill="currentColor" stroke="none" />
                     </svg>
-                    <span style="font-family: monospace; font-size: 11px;">${m.id}</span>
+                    <span style="font-family: monospace; font-size: 11px; font-weight: 600;">${m.id}</span>
+                    <span class="status-badge-container">
+                      ${isSel ? '<span class="badge badge-neon badge-state-sel">✨ ACTIVE</span>' : ''}
+                      ${isLoaded ? '<span class="badge badge-green badge-state-load">⚡ LOADED</span>' : ''}
+                    </span>
                   </div>
                   <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
                     ${m.supportsVision ? '<span class="badge" title="Vision Capable">👁️</span>' : ''}
                     ${m.supportsTools ? '<span class="badge" title="Function Calling / Tools">🛠️</span>' : ''}
                     <button class="card-btn" style="padding: 2px 6px; font-size: 9px;" onclick="window.selectModelForBench('${ep.name}', '${m.id}')" title="Test this model">⚡ Test</button>
-                    <button class="card-btn btn-dots" data-endpoint="${ep.name}" data-model="${m.id}" data-type="${isLocal ? 'local' : 'api'}" title="Actions: ${isLocal ? 'Load / Unload / Benchmark' : 'Select / Test / Benchmark'}">•••</button>
+                    <button class="card-btn btn-dots" data-endpoint="${ep.name}" data-model="${m.id}" data-type="${isLocal ? 'local' : 'api'}" title="Actions">•••</button>
                   </div>
-                </div>`
-                      )
+                </div>`;
+                      })
                       .join('')
                   : '<div style="color: var(--muted-text); font-size: 12px; padding: 6px;">No models fetched yet. Click "Auto-Fetch".</div>'
               }
@@ -1832,12 +1982,27 @@ Waiting to run performance test...
             menuTitleEl.innerText = ep + ' • ' + modelId;
             menuItemsEl.innerHTML = '';
 
+            // 1. Select for VS Code Chat (Available for BOTH Local and Cloud models)
+            const selectItem = document.createElement('div');
+            selectItem.className = 'model-menu-item';
+            selectItem.innerHTML = '<span>✨</span> <span><strong>Select</strong> for VS Code Chat</span>';
+            selectItem.addEventListener('click', function() {
+              window.__lastSelectedModel = { endpointName: ep, modelId: modelId };
+              applyModelStates(window.__lastSelectedModel, window.__lastLoadedKeys || []);
+              post('selectModel', { endpointName: ep, modelId: modelId });
+              closeModelMenu();
+            });
+            menuItemsEl.appendChild(selectItem);
+
             if (type === 'local') {
-              // Local Model Options: Load, Unload, Benchmark, Copy ID
+              // Local Model Options: Load into Memory, Unload, Benchmark, Copy ID
               const loadItem = document.createElement('div');
               loadItem.className = 'model-menu-item';
               loadItem.innerHTML = '<span>⚡</span> <span><strong>Load</strong> into VRAM / Memory</span>';
               loadItem.addEventListener('click', function() {
+                const curLoaded = (window.__lastLoadedKeys || []).concat([ep + ':::' + modelId, modelId, modelId.toLowerCase()]);
+                window.__lastLoadedKeys = curLoaded;
+                applyModelStates(window.__lastSelectedModel, curLoaded);
                 post('loadModel', { endpointName: ep, modelId: modelId });
                 closeModelMenu();
               });
@@ -1846,9 +2011,17 @@ Waiting to run performance test...
               unloadItem.className = 'model-menu-item danger';
               unloadItem.innerHTML = '<span>🛑</span> <span><strong>Unload</strong> from VRAM</span>';
               unloadItem.addEventListener('click', function() {
+                const curLoaded = (window.__lastLoadedKeys || []).filter(function(k) {
+                  return k !== modelId && k !== ep + ':::' + modelId && k.toLowerCase() !== modelId.toLowerCase();
+                });
+                window.__lastLoadedKeys = curLoaded;
+                applyModelStates(window.__lastSelectedModel, curLoaded);
                 post('unloadModelAction', { endpointName: ep, modelId: modelId });
                 closeModelMenu();
               });
+
+              const divider = document.createElement('div');
+              divider.className = 'model-menu-divider';
 
               const benchItem = document.createElement('div');
               benchItem.className = 'model-menu-item';
@@ -1866,24 +2039,13 @@ Waiting to run performance test...
                 closeModelMenu();
               });
 
-              const divider = document.createElement('div');
-              divider.className = 'model-menu-divider';
-
               menuItemsEl.appendChild(loadItem);
               menuItemsEl.appendChild(unloadItem);
               menuItemsEl.appendChild(divider);
               menuItemsEl.appendChild(benchItem);
               menuItemsEl.appendChild(copyItem);
             } else {
-              // API Model Options: Select, Benchmark, Test Connection, Copy ID
-              const selectItem = document.createElement('div');
-              selectItem.className = 'model-menu-item';
-              selectItem.innerHTML = '<span>✨</span> <span><strong>Select</strong> for VS Code Chat</span>';
-              selectItem.addEventListener('click', function() {
-                post('selectModel', { endpointName: ep, modelId: modelId });
-                closeModelMenu();
-              });
-
+              // API Model Options: Test Connection, Benchmark, Copy ID
               const testItem = document.createElement('div');
               testItem.className = 'model-menu-item';
               testItem.innerHTML = '<span>🧪</span> <span>Test API Connection</span>';
@@ -1892,6 +2054,9 @@ Waiting to run performance test...
                 closeModelMenu();
               });
 
+              const divider = document.createElement('div');
+              divider.className = 'model-menu-divider';
+
               const benchItem = document.createElement('div');
               benchItem.className = 'model-menu-item';
               benchItem.innerHTML = '<span>🚀</span> <span>Run Speed Benchmark</span>';
@@ -1908,10 +2073,6 @@ Waiting to run performance test...
                 closeModelMenu();
               });
 
-              const divider = document.createElement('div');
-              divider.className = 'model-menu-divider';
-
-              menuItemsEl.appendChild(selectItem);
               menuItemsEl.appendChild(testItem);
               menuItemsEl.appendChild(divider);
               menuItemsEl.appendChild(benchItem);
@@ -1930,6 +2091,53 @@ Waiting to run performance test...
             menuEl.style.left = left + 'px';
             menuEl.style.top = top + 'px';
           });
+        });
+      }
+
+      function applyModelStates(selectedModel, loadedKeys) {
+        if (selectedModel !== undefined) window.__lastSelectedModel = selectedModel;
+        if (loadedKeys !== undefined) window.__lastLoadedKeys = loadedKeys;
+
+        document.querySelectorAll('.model-item').forEach(function(item) {
+          const ep = item.getAttribute('data-endpoint') || '';
+          const model = (item.getAttribute('data-model') || '').toLowerCase();
+          const modelRaw = item.getAttribute('data-model-id') || item.getAttribute('data-model') || '';
+          const key = (ep + ':::' + modelRaw).toLowerCase();
+
+          const isSel = window.__lastSelectedModel &&
+            (window.__lastSelectedModel.modelId.toLowerCase() === model || window.__lastSelectedModel.modelId.toLowerCase() === modelRaw.toLowerCase()) &&
+            (!window.__lastSelectedModel.endpointName || window.__lastSelectedModel.endpointName.toLowerCase() === ep.toLowerCase());
+
+          let isLoaded = false;
+          if (window.__lastLoadedKeys && Array.isArray(window.__lastLoadedKeys)) {
+            const lkLower = window.__lastLoadedKeys.map(function(k) { return String(k).toLowerCase(); });
+            isLoaded = lkLower.includes(key) ||
+              lkLower.includes(model) ||
+              lkLower.includes(modelRaw.toLowerCase()) ||
+              lkLower.some(function(k) {
+                return (k.length > 3 && (k.includes(model) || model.includes(k)));
+              });
+          }
+
+          if (isSel) {
+            item.classList.add('is-selected');
+          } else {
+            item.classList.remove('is-selected');
+          }
+
+          if (isLoaded) {
+            item.classList.add('is-loaded');
+          } else {
+            item.classList.remove('is-loaded');
+          }
+
+          const badgeContainer = item.querySelector('.status-badge-container');
+          if (badgeContainer) {
+            let html = '';
+            if (isSel) html += '<span class="badge badge-neon badge-state-sel">✨ ACTIVE</span> ';
+            if (isLoaded) html += '<span class="badge badge-green badge-state-load">⚡ LOADED</span>';
+            badgeContainer.innerHTML = html;
+          }
         });
       }
 
@@ -2011,7 +2219,9 @@ Waiting to run performance test...
           const msg = event.data;
           if (!msg) return;
 
-          if (msg.type === 'liveModelTelemetry') {
+          if (msg.type === 'modelStateUpdate') {
+            applyModelStates(msg.selectedModel, msg.loadedKeys);
+          } else if (msg.type === 'liveModelTelemetry') {
             handleLiveTelemetryEvent(msg);
           } else if (msg.type === 'benchmarkChunk') {
             const outBox = document.getElementById('streamOutput');
@@ -2029,6 +2239,9 @@ Waiting to run performance test...
           } else if (msg.type === 'benchmarkBatchComplete') {
             renderLeaderboard(msg.history);
           } else if (msg.type === 'telemetryUpdate') {
+            if (msg.selectedModel !== undefined || msg.loadedKeys !== undefined) {
+              applyModelStates(msg.selectedModel, msg.loadedKeys);
+            }
             renderTelemetry(msg);
           }
         } catch (e) {

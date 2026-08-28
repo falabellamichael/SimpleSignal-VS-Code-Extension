@@ -426,32 +426,37 @@ export class SystemDiagnostics {
     // 2. LM Studio load
     if (urlLower.includes(':1234') || nameLower.includes('lm studio')) {
       try {
-        const loadUrl = `${baseUrl}/models/load`;
-        const res = await fetch(loadUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-          },
-          body: JSON.stringify({ model: modelId }),
-        });
-        if (res.ok) {
-          return { success: true, message: `Loaded "${modelId}" into LM Studio memory.` };
+        const root = baseUrl.replace(/\/+$/, '').replace(/\/v1.*$/, '').replace(/\/api.*$/, '');
+        for (const path of ['/api/v0/models/load', '/v1/models/load']) {
+          try {
+            const res = await fetch(`${root}${path}`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+              },
+              body: JSON.stringify({ model: modelId, model_name: modelId, instance_id: modelId }),
+            });
+            if (res.ok) {
+              return { success: true, message: `Loaded "${modelId}" into LM Studio memory.` };
+            }
+          } catch {}
         }
       } catch {}
     }
 
-    // 3. Lemonade Server load
+    // 3. Lemonade Server load (POST /api/v1/load with {"model_name": modelId})
     if (urlLower.includes(':9000') || urlLower.includes(':13305') || nameLower.includes('lemonade')) {
       try {
-        const loadUrl = `${baseUrl}/models/load`;
+        const root = baseUrl.replace(/\/+$/, '').replace(/\/api\/v1.*$/, '').replace(/\/v1.*$/, '');
+        const loadUrl = `${root}/api/v1/load`;
         const res = await fetch(loadUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
           },
-          body: JSON.stringify({ model: modelId }),
+          body: JSON.stringify({ model_name: modelId }),
         });
         if (res.ok) {
           return { success: true, message: `Loaded "${modelId}" into Lemonade memory.` };
@@ -463,7 +468,7 @@ export class SystemDiagnostics {
     try {
       let chatUrl = baseUrl;
       if (!chatUrl.endsWith('/chat/completions')) {
-        chatUrl = `${baseUrl}/chat/completions`;
+        chatUrl = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
       }
       const res = await fetch(chatUrl, {
         method: 'POST',
@@ -496,10 +501,41 @@ export class SystemDiagnostics {
     const apiKey = resolveEndpointApiKey(endpoint);
     const baseUrl = normalizeBaseUrl(endpoint.baseUrl);
 
-    // 1. Ollama unload (keep_alive: 0 unloads model immediately)
+    // 1. Lemonade Server unload (POST /api/v1/unload with {"model_name": modelId})
+    if (urlLower.includes(':9000') || urlLower.includes(':13305') || nameLower.includes('lemonade')) {
+      try {
+        const root = baseUrl.replace(/\/+$/, '').replace(/\/api\/v1.*$/, '').replace(/\/v1.*$/, '');
+        const unloadUrl = `${root}/api/v1/unload`;
+        const res = await fetch(unloadUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+          },
+          body: JSON.stringify({ model_name: modelId }),
+        });
+        if (res.ok) {
+          return { success: true, message: `Unloaded "${modelId}" from Lemonade memory.` };
+        }
+        // Fallback to global unload
+        const res2 = await fetch(unloadUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        if (res2.ok) {
+          return { success: true, message: `Unloaded model from Lemonade memory.` };
+        }
+      } catch (e: any) {
+        return { success: false, message: e.message || 'Failed to unload from Lemonade server' };
+      }
+    }
+
+    // 2. Ollama unload (keep_alive: 0 unloads model immediately)
     if (urlLower.includes(':11434') || nameLower.includes('ollama') || endpoint.protocol === 'ollama') {
       try {
-        const url = `${baseUrl.includes('/api') ? baseUrl.replace(/\/api.*$/, '') : baseUrl}/api/generate`;
+        const root = baseUrl.replace(/\/+$/, '').replace(/\/api.*$/, '').replace(/\/v1.*$/, '');
+        const url = `${root}/api/generate`;
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -513,59 +549,47 @@ export class SystemDiagnostics {
       }
     }
 
-    // 2. LM Studio unload
+    // 3. LM Studio unload
     if (urlLower.includes(':1234') || nameLower.includes('lm studio')) {
       try {
-        const unloadUrl = `${baseUrl}/models/unload`;
-        const res = await fetch(unloadUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-          },
-          body: JSON.stringify({ model: modelId }),
-        });
-        if (res.ok) {
-          return { success: true, message: `Unloaded "${modelId}" from LM Studio.` };
+        const root = baseUrl.replace(/\/+$/, '').replace(/\/v1.*$/, '').replace(/\/api.*$/, '');
+        for (const path of ['/api/v0/models/unload', '/v1/models/unload', '/models/unload']) {
+          try {
+            const res = await fetch(`${root}${path}`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+              },
+              body: JSON.stringify({ model: modelId, model_name: modelId, instance_id: modelId }),
+            });
+            if (res.ok) {
+              return { success: true, message: `Unloaded "${modelId}" from LM Studio.` };
+            }
+          } catch {}
         }
       } catch {}
     }
 
-    // 3. Lemonade Server unload
-    if (urlLower.includes(':9000') || urlLower.includes(':13305') || nameLower.includes('lemonade')) {
+    // 4. Try generic endpoints
+    const root = baseUrl.replace(/\/+$/, '').replace(/\/v1.*$/, '').replace(/\/api.*$/, '');
+    for (const path of ['/api/v1/unload', '/models/unload', '/v1/models/unload', '/unload']) {
       try {
-        const unloadUrl = `${baseUrl}/models/unload`;
-        const res = await fetch(unloadUrl, {
+        const res = await fetch(`${root}${path}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
           },
-          body: JSON.stringify({ model: modelId }),
+          body: JSON.stringify({ model: modelId, model_name: modelId }),
         });
         if (res.ok) {
-          return { success: true, message: `Unloaded "${modelId}" from Lemonade server.` };
+          return { success: true, message: `Unloaded "${modelId}" from server memory.` };
         }
       } catch {}
     }
 
-    // 4. Try generic /models/unload
-    try {
-      const unloadUrl = `${baseUrl}/models/unload`;
-      const res = await fetch(unloadUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-        },
-        body: JSON.stringify({ model: modelId }),
-      });
-      if (res.ok) {
-        return { success: true, message: `Unloaded "${modelId}" from server memory.` };
-      }
-    } catch {}
-
-    return { success: false, message: `Unload not natively supported by this endpoint.` };
+    return { success: false, message: 'Unload not natively supported by this endpoint.' };
   }
 
   /**
