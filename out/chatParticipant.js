@@ -35,8 +35,10 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SimpleSignalChatParticipant = void 0;
 const vscode = __importStar(require("vscode"));
+const fs = __importStar(require("fs"));
 const dashboard_1 = require("./dashboard");
 const utils_1 = require("./utils");
+const vision_1 = require("./vision");
 const telemetryTracker_1 = require("./telemetryTracker");
 class SimpleSignalChatParticipant {
     static register(context, provider, treeDataProvider, statusBarItem, outputChannel) {
@@ -209,7 +211,19 @@ class SimpleSignalChatParticipant {
                     }
                 }
             }
-            messages.push({ role: 'user', content: request.prompt });
+            // Attach any images the user dropped into this request as OpenAI image_url parts.
+            const requestImages = collectRequestImageParts(request);
+            if (requestImages.length > 0) {
+                const content = [];
+                if (request.prompt) {
+                    content.push({ type: 'text', text: request.prompt });
+                }
+                content.push(...requestImages);
+                messages.push({ role: 'user', content });
+            }
+            else {
+                messages.push({ role: 'user', content: request.prompt });
+            }
             const candidateKeys = (0, utils_1.getApiKeyCandidates)(targetEndpoint);
             if (candidateKeys.length === 0)
                 candidateKeys.push('');
@@ -340,4 +354,32 @@ class SimpleSignalChatParticipant {
     }
 }
 exports.SimpleSignalChatParticipant = SimpleSignalChatParticipant;
+/**
+ * Extracts image attachments from a chat request and converts them to
+ * OpenAI `image_url` content parts. Handles `LanguageModelDataPart` image
+ * values as well as `vscode.Uri` file references pointing at local images.
+ */
+function collectRequestImageParts(request) {
+    const parts = [];
+    for (const ref of request.references ?? []) {
+        const value = ref.value;
+        if ((0, vision_1.isImageDataPart)(value)) {
+            parts.push((0, vision_1.toOpenAIImagePart)((0, vision_1.dataPartToDataUrl)(value)));
+            continue;
+        }
+        const uri = value instanceof vscode.Uri ? value : value?.uri instanceof vscode.Uri ? value.uri : undefined;
+        if (uri && uri.scheme === 'file' && /\.(png|jpe?g|gif|webp|bmp)$/i.test(uri.fsPath)) {
+            try {
+                const bytes = fs.readFileSync(uri.fsPath);
+                const ext = uri.fsPath.split('.').pop()?.toLowerCase() || 'png';
+                const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : ext === 'bmp' ? 'image/bmp' : 'image/png';
+                parts.push((0, vision_1.toOpenAIImagePart)(`data:${mime};base64,${bytes.toString('base64')}`));
+            }
+            catch {
+                // unreadable attachment — skip rather than failing the whole request
+            }
+        }
+    }
+    return parts;
+}
 //# sourceMappingURL=chatParticipant.js.map

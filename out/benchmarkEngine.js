@@ -63,6 +63,15 @@ class BenchmarkEngine {
         },
     ];
     static history = [];
+    static storage = null;
+    static cancelRequested = false;
+    static setStorage(storage) {
+        this.storage = storage;
+        const saved = storage.get('simplesignal.benchmarkHistory', []);
+        if (Array.isArray(saved)) {
+            this.history = saved;
+        }
+    }
     static getHistory() {
         return [...this.history];
     }
@@ -71,9 +80,26 @@ class BenchmarkEngine {
         if (this.history.length > 50) {
             this.history.pop();
         }
+        this.persist();
     }
     static clearHistory() {
         this.history = [];
+        this.persist();
+    }
+    static requestCancel() {
+        this.cancelRequested = true;
+    }
+    static isCancelRequested() {
+        return this.cancelRequested;
+    }
+    static resetCancel() {
+        this.cancelRequested = false;
+    }
+    static persist() {
+        try {
+            this.storage?.update('simplesignal.benchmarkHistory', this.history);
+        }
+        catch { }
     }
     /**
      * Run benchmark on a specific model against an endpoint.
@@ -83,6 +109,7 @@ class BenchmarkEngine {
         const prompt = customPrompt || preset.prompt;
         const maxTokens = customMaxTokens || preset.maxTokens;
         const protocol = endpoint.protocol || 'openai';
+        this.resetCancel();
         const telemetrySession = telemetryTracker_1.ModelTelemetryTracker.startMessage({
             modelId,
             modelName: modelId,
@@ -198,6 +225,10 @@ class BenchmarkEngine {
                 }
                 let buffer = '';
                 res.on('data', (chunk) => {
+                    if (BenchmarkEngine.isCancelRequested()) {
+                        req.destroy();
+                        return;
+                    }
                     buffer += chunk.toString('utf-8');
                     const lines = buffer.split('\n');
                     buffer = lines.pop() || '';
@@ -365,6 +396,10 @@ class BenchmarkEngine {
             }, (res) => {
                 let buffer = '';
                 res.on('data', (chunk) => {
+                    if (BenchmarkEngine.isCancelRequested()) {
+                        req.destroy();
+                        return;
+                    }
                     buffer += chunk.toString('utf-8');
                     const lines = buffer.split('\n');
                     buffer = lines.pop() || '';

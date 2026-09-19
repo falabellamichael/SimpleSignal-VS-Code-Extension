@@ -196,13 +196,16 @@ export class SystemDiagnostics {
    */
   public static async getVRAMDiagnostics(): Promise<VRAMDiagnostics> {
     let gpuName = 'Graphics Adapter';
+    let totalVRAM_MB = 0;
     let usedVRAM_MB = 0;
     const processes: ProcessMemoryInfo[] = [];
     const aiProcesses: ProcessMemoryInfo[] = [];
 
     if (process.platform === 'win32') {
       const vramScript = `
-        $gpu = (Get-CimInstance Win32_VideoController | Select-Object -First 1).Name
+        $adapter = Get-CimInstance Win32_VideoController | Select-Object -First 1
+        $gpu = $adapter.Name
+        $totalMB = if ($adapter.AdapterRAM) { [math]::Round(($adapter.AdapterRAM / 1MB), 1) } else { 0 }
         $adapterMem = (Get-Counter '\\GPU Adapter Memory(*)\\Dedicated Usage' -ErrorAction SilentlyContinue).CounterSamples | Measure-Object -Property CookedValue -Sum
         $usedMB = if ($adapterMem) { [math]::Round(($adapterMem.Sum / 1MB), 1) } else { 0 }
         
@@ -227,6 +230,7 @@ export class SystemDiagnostics {
         
         [PSCustomObject]@{
           GPU = $gpu
+          TotalVRAM_MB = $totalMB
           UsedVRAM_MB = $usedMB
           Processes = $dedup
         } | ConvertTo-Json -Depth 3 -Compress
@@ -236,6 +240,7 @@ export class SystemDiagnostics {
       try {
         const parsed = JSON.parse(out);
         if (parsed.GPU) gpuName = parsed.GPU;
+        if (parsed.TotalVRAM_MB) totalVRAM_MB = parsed.TotalVRAM_MB;
         if (parsed.UsedVRAM_MB) usedVRAM_MB = parsed.UsedVRAM_MB;
 
         // Get command lines for processes
@@ -278,11 +283,12 @@ export class SystemDiagnostics {
       } catch {}
     } else {
       // Check nvidia-smi on Linux
-      const nvidiaOut = await this.runCommand('nvidia-smi --query-gpu=name,memory.used --format=csv,noheader,nounits');
+      const nvidiaOut = await this.runCommand('nvidia-smi --query-gpu=name,memory.total,memory.used --format=csv,noheader,nounits');
       if (nvidiaOut) {
         const parts = nvidiaOut.split(',');
         gpuName = parts[0]?.trim() || gpuName;
-        usedVRAM_MB = parseFloat(parts[1]?.trim()) || 0;
+        totalVRAM_MB = parseFloat(parts[1]?.trim()) || 0;
+        usedVRAM_MB = parseFloat(parts[2]?.trim()) || 0;
       } else {
         // Check rocm-smi for AMD GPUs on Linux
         const rocmOut = await this.runCommand('rocm-smi --showmeminfo vram --json');
@@ -301,6 +307,7 @@ export class SystemDiagnostics {
 
     return {
       gpuName,
+      totalVRAM_MB,
       usedVRAM_MB,
       processes,
       aiProcesses,

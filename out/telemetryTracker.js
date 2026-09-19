@@ -40,8 +40,27 @@ class ModelTelemetryTracker {
     static lastStats = null;
     static history = [];
     static firstTokenTimeMap = new Map();
+    static storage = null;
     static _onTelemetryEvent = new vscode.EventEmitter();
     static onTelemetryEvent = this._onTelemetryEvent.event;
+    static setStorage(storage) {
+        this.storage = storage;
+        const saved = storage.get('simplesignal.messageHistory', []);
+        if (Array.isArray(saved)) {
+            this.history = saved;
+        }
+        const savedLast = storage.get('simplesignal.lastMessage', null);
+        if (savedLast) {
+            this.lastStats = savedLast;
+        }
+    }
+    static persist() {
+        try {
+            this.storage?.update('simplesignal.messageHistory', this.history);
+            this.storage?.update('simplesignal.lastMessage', this.lastStats);
+        }
+        catch { }
+    }
     static startMessage(params) {
         const id = `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
         const now = Date.now();
@@ -145,6 +164,7 @@ class ModelTelemetryTracker {
         if (this.history.length > 50) {
             this.history.pop();
         }
+        this.persist();
         this._onTelemetryEvent.fire({ type: 'complete', stats: this.lastStats });
         return this.lastStats;
     }
@@ -164,6 +184,7 @@ class ModelTelemetryTracker {
         if (this.history.length > 50) {
             this.history.pop();
         }
+        this.persist();
         this._onTelemetryEvent.fire({ type: 'error', stats: this.lastStats });
     }
     static getLastStats() {
@@ -179,6 +200,7 @@ class ModelTelemetryTracker {
         this.history = [];
         this.lastStats = null;
         this.activeStats = null;
+        this.persist();
     }
 }
 exports.ModelTelemetryTracker = ModelTelemetryTracker;

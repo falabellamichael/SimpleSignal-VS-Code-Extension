@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { EndpointConfig, ModelConfig } from './types';
+import { detectVisionSupport } from './vision';
 
 export class SimpleSignalTreeDataProvider implements vscode.TreeDataProvider<TreeItemNode> {
   private _onDidChangeTreeData = new vscode.EventEmitter<TreeItemNode | undefined | void>();
@@ -414,7 +415,11 @@ export class SimpleSignalTreeDataProvider implements vscode.TreeDataProvider<Tre
 
   private createModelNode(model: ModelConfig, endpointName: string): TreeItemNode {
     const badges: string[] = [];
-    if (model.supportsVision) badges.push('👁️');
+    // Detector wins over a stale stored `false`: flags persisted by older
+    // detector versions (or servers that omitted vision metadata) would
+    // otherwise hide the icon on models that genuinely accept images.
+    const hasVision = model.supportsVision === true || detectVisionSupport(model);
+    if (hasVision) badges.push('👁️');
     if (model.supportsTools) badges.push('🛠️');
 
     const isLocal = this.isLocalEndpoint(endpointName);
@@ -447,7 +452,7 @@ export class SimpleSignalTreeDataProvider implements vscode.TreeDataProvider<Tre
       icon
     );
     node.description = `${badges.join(' ')} [${endpointName}]`;
-    node.tooltip = `Model: ${model.id}\nEndpoint: ${endpointName}\nStatus: ${isSelected ? 'Selected Active Model' : isLoaded ? 'Loaded in Memory' : 'Available'}\nType: ${isLocal ? 'Local Server' : 'Cloud API'}\nContext Window: ${model.contextLength || 131072} tokens\nVision: ${model.supportsVision ? 'Yes' : 'No'}\nTools: ${model.supportsTools ? 'Yes' : 'No'}`;
+    node.tooltip = `Model: ${model.id}\nEndpoint: ${endpointName}\nStatus: ${isSelected ? 'Selected Active Model' : isLoaded ? 'Loaded in Memory' : 'Available'}\nType: ${isLocal ? 'Local Server' : 'Cloud API'}\nContext Window: ${model.contextLength || 131072} tokens\nVision: ${hasVision ? 'Yes' : 'No'}\nTools: ${model.supportsTools ? 'Yes' : 'No'}`;
     (node as any).model = model;
     (node as any).endpointName = endpointName;
     return node;

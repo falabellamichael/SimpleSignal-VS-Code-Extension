@@ -49,6 +49,7 @@ export interface RAMDiagnostics {
 
 export interface VRAMDiagnostics {
   gpuName: string;
+  totalVRAM_MB: number;
   usedVRAM_MB: number;
   processes: ProcessMemoryInfo[];
   aiProcesses: ProcessMemoryInfo[];

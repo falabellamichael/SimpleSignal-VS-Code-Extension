@@ -1,7 +1,12 @@
 import * as vscode from 'vscode';
+import { isImageDataPart, isAnyDataPart, dataPartToDataUrl, toOpenAIImagePart } from './vision';
 
 /**
  * Converts VS Code chat messages to OpenAI-compatible messages format.
+ * Text parts stay as plain strings when no images are present; messages that
+ * carry `LanguageModelDataPart` image parts are emitted as multipart content
+ * (`[{ type: 'text', ... }, { type: 'image_url', ... }]`) so vision models
+ * actually receive the attached images instead of silently dropping them.
  */
 export function convertMessagesToOpenAI(messages: readonly (vscode.LanguageModelChatRequestMessage | any)[]): any[] {
   const out: any[] = [];
@@ -9,12 +14,23 @@ export function convertMessagesToOpenAI(messages: readonly (vscode.LanguageModel
   for (const m of messages) {
     const role = mapRole(m.role);
     const textParts: string[] = [];
+    const imageParts: any[] = [];
     const toolCalls: any[] = [];
     const toolResults: any[] = [];
 
     for (const part of m.content ?? []) {
       if (part instanceof vscode.LanguageModelTextPart) {
         textParts.push(part.value);
+      } else if (isImageDataPart(part)) {
+        imageParts.push(toOpenAIImagePart(dataPartToDataUrl(part)));
+      } else if (isAnyDataPart(part)) {
+        // Non-image data parts (e.g. JSON/text blobs from tools) are inlined
+        // as text so they are not silently lost.
+        try {
+          textParts.push(Buffer.from((part as any).data).toString('utf-8'));
+        } catch {
+          // ignore undecodable blobs
+        }
       } else if (part instanceof vscode.LanguageModelToolCallPart) {
         const id = part.callId || `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
         let args = '{}';
@@ -57,7 +73,14 @@ export function convertMessagesToOpenAI(messages: readonly (vscode.LanguageModel
     }
 
     const text = textParts.join('');
-    if (text && (role === 'system' || role === 'user' || (role === 'assistant' && !emittedAssistantToolCall))) {
+    if (imageParts.length > 0 && (role === 'system' || role === 'user' || (role === 'assistant' && !emittedAssistantToolCall))) {
+      const content: any[] = [];
+      if (text) {
+        content.push({ type: 'text', text });
+      }
+      content.push(...imageParts);
+      out.push({ role, content });
+    } else if (text && (role === 'system' || role === 'user' || (role === 'assistant' && !emittedAssistantToolCall))) {
       out.push({ role, content: text });
     }
   }
@@ -183,7 +206,6 @@ export function getApiKeyCandidates(endpoint: any): string[] {
       }
     } catch {}
     if (configKey && !configKey.startsWith('${')) add(configKey);
-    add('Maitland1,');
     add('simplerag');
     return candidates;
   }

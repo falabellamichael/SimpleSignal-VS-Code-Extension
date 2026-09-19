@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 import { EndpointConfig } from './types';
 import { SimpleSignalDashboard } from './dashboard';
 import { SimpleSignalTreeDataProvider } from './treeProvider';
 import { SimpleSignalChatProvider } from './provider';
 import { normalizeBaseUrl, resolveEndpointApiKey, getApiKeyCandidates } from './utils';
+import { isImageDataPart, dataPartToDataUrl, toOpenAIImagePart } from './vision';
 import { ModelTelemetryTracker } from './telemetryTracker';
 
 export class SimpleSignalChatParticipant {
@@ -184,7 +186,7 @@ export class SimpleSignalChatParticipant {
       }
 
       // Build conversation history from chat context
-      const messages: { role: string; content: string }[] = [];
+      const messages: { role: string; content: any }[] = [];
       for (const turn of chatContext.history) {
         if (turn instanceof vscode.ChatRequestTurn) {
           messages.push({ role: 'user', content: turn.prompt });
@@ -200,7 +202,18 @@ export class SimpleSignalChatParticipant {
           }
         }
       }
-      messages.push({ role: 'user', content: request.prompt });
+      // Attach any images the user dropped into this request as OpenAI image_url parts.
+      const requestImages: any[] = collectRequestImageParts(request);
+      if (requestImages.length > 0) {
+        const content: any[] = [];
+        if (request.prompt) {
+          content.push({ type: 'text', text: request.prompt });
+        }
+        content.push(...requestImages);
+        messages.push({ role: 'user', content });
+      } else {
+        messages.push({ role: 'user', content: request.prompt });
+      }
 
       const candidateKeys = getApiKeyCandidates(targetEndpoint);
       if (candidateKeys.length === 0) candidateKeys.push('');
@@ -344,4 +357,33 @@ export class SimpleSignalChatParticipant {
     participant.iconPath = vscode.Uri.joinPath(context.extensionUri, 'media', 'logo.svg');
     return participant;
   }
+}
+
+/**
+ * Extracts image attachments from a chat request and converts them to
+ * OpenAI `image_url` content parts. Handles `LanguageModelDataPart` image
+ * values as well as `vscode.Uri` file references pointing at local images.
+ */
+function collectRequestImageParts(request: vscode.ChatRequest): any[] {
+  const parts: any[] = [];
+  for (const ref of request.references ?? []) {
+    const value: any = (ref as any).value;
+    if (isImageDataPart(value)) {
+      parts.push(toOpenAIImagePart(dataPartToDataUrl(value)));
+      continue;
+    }
+    const uri: vscode.Uri | undefined =
+      value instanceof vscode.Uri ? value : (value as any)?.uri instanceof vscode.Uri ? (value as any).uri : undefined;
+    if (uri && uri.scheme === 'file' && /\.(png|jpe?g|gif|webp|bmp)$/i.test(uri.fsPath)) {
+      try {
+        const bytes = fs.readFileSync(uri.fsPath);
+        const ext = uri.fsPath.split('.').pop()?.toLowerCase() || 'png';
+        const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : ext === 'bmp' ? 'image/bmp' : 'image/png';
+        parts.push(toOpenAIImagePart(`data:${mime};base64,${bytes.toString('base64')}`));
+      } catch {
+        // unreadable attachment — skip rather than failing the whole request
+      }
+    }
+  }
+  return parts;
 }

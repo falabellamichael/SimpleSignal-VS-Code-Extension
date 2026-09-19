@@ -71,7 +71,7 @@ class SimpleSignalChatProvider {
             maxInputTokens: 131072,
             maxOutputTokens: 8192,
             capabilities: {
-                vision: true,
+                imageInput: true,
                 toolCalling: true,
             },
         });
@@ -96,7 +96,7 @@ class SimpleSignalChatProvider {
                     maxInputTokens: m.contextLength || 131072,
                     maxOutputTokens: m.maxOutputTokens || 8192,
                     capabilities: {
-                        vision: m.supportsVision ?? false,
+                        imageInput: m.supportsVision ?? false,
                         toolCalling: m.supportsTools ?? true,
                     },
                 };

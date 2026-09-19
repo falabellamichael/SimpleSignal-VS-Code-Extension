@@ -4,6 +4,7 @@ import { ModelFetcher } from './modelFetcher';
 import { BenchmarkEngine } from './benchmarkEngine';
 import { SystemDiagnostics } from './systemDiagnostics';
 import { ModelTelemetryTracker } from './telemetryTracker';
+import { detectVisionSupport } from './vision';
 
 export class SimpleSignalDashboard {
   public static currentPanel: SimpleSignalDashboard | undefined;
@@ -15,7 +16,7 @@ export class SimpleSignalDashboard {
   private readonly _panel: vscode.WebviewPanel;
   private _disposables: vscode.Disposable[] = [];
 
-  public static createOrShow(extensionUri: vscode.Uri) {
+  public static createOrShow(context: vscode.ExtensionContext) {
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
       : undefined;
@@ -32,14 +33,14 @@ export class SimpleSignalDashboard {
       column || vscode.ViewColumn.One,
       {
         enableScripts: true,
-        retainContextWhenHidden: false,
+        retainContextWhenHidden: true,
       }
     );
 
-    SimpleSignalDashboard.currentPanel = new SimpleSignalDashboard(panel, extensionUri);
+    SimpleSignalDashboard.currentPanel = new SimpleSignalDashboard(panel, context);
   }
 
-  private constructor(panel: vscode.WebviewPanel, private readonly _extensionUri: vscode.Uri) {
+  private constructor(panel: vscode.WebviewPanel, private readonly _context: vscode.ExtensionContext) {
     this._panel = panel;
 
     // Load initial selected model from settings
@@ -137,6 +138,12 @@ export class SimpleSignalDashboard {
             case 'getTelemetry':
               await this.sendTelemetryData();
               break;
+            case 'pingEndpoints':
+              await this.pingEndpoints();
+              break;
+            case 'addEndpoint':
+              await this.addEndpoint(message);
+              break;
             case 'runBenchmark':
               await this.handleRunBenchmark(message);
               break;
@@ -162,12 +169,14 @@ export class SimpleSignalDashboard {
               await this.handleCopyModelId(message);
               break;
             case 'clearBenchmarkHistory':
-              BenchmarkEngine.clearHistory();
-              await this.sendTelemetryData();
+              await this.handleClearBenchmarkHistory();
               break;
             case 'clearMessageHistory':
-              ModelTelemetryTracker.clearHistory();
-              await this.sendTelemetryData();
+              await this.handleClearMessageHistory();
+              break;
+            case 'cancelBenchmark':
+              BenchmarkEngine.requestCancel();
+              this._panel.webview.postMessage({ type: 'benchmarkCancelled' });
               break;
           }
         } catch (err: any) {
@@ -212,6 +221,64 @@ export class SimpleSignalDashboard {
         vscode.window.showErrorMessage(`❌ ${target.name} Connection Failed: ${err.message || err}`);
       }
     }
+  }
+
+  private async pingEndpoints() {
+    const config = vscode.workspace.getConfiguration('simplesignal');
+    const endpoints = config.get<EndpointConfig[]>('endpoints', []);
+    const results: Record<string, boolean> = {};
+
+    await Promise.all(
+      endpoints.map(async (ep) => {
+        if (ep.enabled === false) {
+          results[ep.name] = false;
+          return;
+        }
+        const base = ep.baseUrl.replace(/\/+$/, '');
+        try {
+          results[ep.name] = await ModelFetcher.checkUrlReachable(base, ep.apiKey);
+        } catch {
+          results[ep.name] = false;
+        }
+      })
+    );
+
+    this._panel.webview.postMessage({ type: 'endpointHealth', results });
+  }
+
+  private async addEndpoint(message: { name?: string; baseUrl?: string; protocol?: string; apiKey?: string }) {
+    const name = (message.name || '').trim();
+    const baseUrl = (message.baseUrl || '').trim();
+    const protocol = (message.protocol || 'openai').trim();
+
+    if (!name || !baseUrl) {
+      vscode.window.showErrorMessage('Endpoint name and base URL are required.');
+      return;
+    }
+
+    const config = vscode.workspace.getConfiguration('simplesignal');
+    const endpoints: EndpointConfig[] = JSON.parse(JSON.stringify(config.get<EndpointConfig[]>('endpoints', [])));
+
+    if (endpoints.some((e) => e.name.toLowerCase() === name.toLowerCase())) {
+      vscode.window.showErrorMessage(`Endpoint "${name}" already exists.`);
+      return;
+    }
+
+    const newEndpoint: EndpointConfig = {
+      name,
+      baseUrl,
+      protocol: protocol as EndpointConfig['protocol'],
+      enabled: true,
+      models: [],
+    };
+    if (message.apiKey) {
+      newEndpoint.apiKey = message.apiKey;
+    }
+
+    endpoints.push(newEndpoint);
+    await config.update('endpoints', endpoints, vscode.ConfigurationTarget.Global);
+    vscode.window.showInformationMessage(`➕ Added endpoint "${name}". Click "Auto-Fetch" to discover its models.`);
+    this._update();
   }
 
   private async sendTelemetryData() {
@@ -293,10 +360,16 @@ export class SimpleSignalDashboard {
   private async handleRunAllBenchmarks() {
     const config = vscode.workspace.getConfiguration('simplesignal');
     const endpoints = config.get<EndpointConfig[]>('endpoints', []).filter((e) => e.enabled !== false);
+    BenchmarkEngine.resetCancel();
 
     let count = 0;
     for (const ep of endpoints) {
       for (const m of ep.models || []) {
+        if (BenchmarkEngine.isCancelRequested()) {
+          this._panel.webview.postMessage({ type: 'benchmarkBatchComplete', history: BenchmarkEngine.getHistory(), cancelled: true });
+          return;
+        }
+
         count++;
         this._panel.webview.postMessage({
           type: 'benchmarkBatchStatus',
@@ -305,30 +378,49 @@ export class SimpleSignalDashboard {
           progress: count,
         });
 
-        await BenchmarkEngine.runBenchmark(ep, m.id, 'quick_speed', undefined, 48, (chunk, curTok, curTPS) => {
-          this._panel.webview.postMessage({
-            type: 'benchmarkChunk',
-            modelId: m.id,
-            chunk,
-            currentTokens: curTok,
-            currentTPS: curTPS,
+        try {
+          await BenchmarkEngine.runBenchmark(ep, m.id, 'quick_speed', undefined, 48, (chunk, curTok, curTPS) => {
+            this._panel.webview.postMessage({
+              type: 'benchmarkChunk',
+              modelId: m.id,
+              chunk,
+              currentTokens: curTok,
+              currentTPS: curTPS,
+            });
           });
-        });
+        } catch (err: any) {
+          vscode.window.showErrorMessage(`Benchmark failed for ${m.id}: ${err.message || err}`);
+        }
       }
     }
 
     this._panel.webview.postMessage({
       type: 'benchmarkBatchComplete',
       history: BenchmarkEngine.getHistory(),
+      cancelled: BenchmarkEngine.isCancelRequested(),
     });
   }
 
   private async handleUnloadModel(msg: { source: string; modelName: string; pid?: number }) {
     if (msg.source === 'ollama') {
+      const confirm = await vscode.window.showWarningMessage(
+        `Unload Ollama model "${msg.modelName}"?`,
+        { modal: true },
+        'Yes, unload'
+      );
+      if (confirm !== 'Yes, unload') return;
+
       const ok = await SystemDiagnostics.unloadOllamaModel(msg.modelName);
       if (ok) vscode.window.showInformationMessage(`⚡ Unloaded Ollama model: ${msg.modelName}`);
       else vscode.window.showErrorMessage(`Failed to unload Ollama model: ${msg.modelName}`);
     } else if (msg.pid) {
+      const confirm = await vscode.window.showWarningMessage(
+        `Terminate process ${msg.pid} for "${msg.modelName}"? This will force-kill the model process.`,
+        { modal: true },
+        'Yes, terminate'
+      );
+      if (confirm !== 'Yes, terminate') return;
+
       const ok = await SystemDiagnostics.killProcess(msg.pid);
       if (ok) vscode.window.showInformationMessage(`⚡ Terminated process (PID ${msg.pid}) for ${msg.modelName}`);
       else vscode.window.showErrorMessage(`Failed to terminate PID ${msg.pid}`);
@@ -384,6 +476,13 @@ export class SimpleSignalDashboard {
       return;
     }
 
+    const confirm = await vscode.window.showWarningMessage(
+      `Unload "${message.modelId}" from memory?`,
+      { modal: true },
+      'Yes, unload'
+    );
+    if (confirm !== 'Yes, unload') return;
+
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -420,10 +519,6 @@ export class SimpleSignalDashboard {
     try {
       const config = vscode.workspace.getConfiguration('simplesignal');
       await config.update('defaultModel', `${message.endpointName}:::${message.modelId}`, vscode.ConfigurationTarget.Global);
-    } catch {}
-
-    try {
-      await vscode.env.clipboard.writeText(message.modelId);
     } catch {}
 
     // Notify TreeDataProvider and StatusBar
@@ -478,6 +573,28 @@ export class SimpleSignalDashboard {
     vscode.window.showInformationMessage(`📋 Copied "${message.modelId}" to clipboard!`);
   }
 
+  private async handleClearBenchmarkHistory() {
+    const confirm = await vscode.window.showWarningMessage(
+      'Clear all benchmark history?',
+      { modal: true },
+      'Yes, clear'
+    );
+    if (confirm !== 'Yes, clear') return;
+    BenchmarkEngine.clearHistory();
+    await this.sendTelemetryData();
+  }
+
+  private async handleClearMessageHistory() {
+    const confirm = await vscode.window.showWarningMessage(
+      'Clear all live message history?',
+      { modal: true },
+      'Yes, clear'
+    );
+    if (confirm !== 'Yes, clear') return;
+    ModelTelemetryTracker.clearHistory();
+    await this.sendTelemetryData();
+  }
+
   public dispose() {
     SimpleSignalDashboard.currentPanel = undefined;
     this._panel.dispose();
@@ -485,6 +602,24 @@ export class SimpleSignalDashboard {
       const x = this._disposables.pop();
       if (x) x.dispose();
     }
+  }
+
+  private _getNonce(): string {
+    let text = '';
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    for (let i = 0; i < 32; i++) {
+      text += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return text;
+  }
+
+  private _escapeHtml(value: string): string {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   private isLocalEndpoint(baseUrl: string, name: string): boolean {
@@ -524,6 +659,8 @@ export class SimpleSignalDashboard {
     const config = vscode.workspace.getConfiguration('simplesignal');
     const endpoints = config.get<EndpointConfig[]>('endpoints', []);
     const totalModels = endpoints.reduce((sum, ep) => sum + (ep.models?.length || 0), 0);
+    const nonce = this._getNonce();
+    const esc = this._escapeHtml.bind(this);
 
     const allModelsList: { epName: string; modelId: string }[] = [];
     for (const ep of endpoints) {
@@ -538,7 +675,7 @@ export class SimpleSignalDashboard {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <title>SimpleSignal Hub</title>
   <style>
     :root {
@@ -783,6 +920,11 @@ export class SimpleSignalDashboard {
     .status-dot.disabled {
       background: #888;
       box-shadow: none;
+    }
+
+    .status-dot.offline {
+      background: #ff5722;
+      box-shadow: 0 0 8px #ff5722;
     }
 
     .card-url {
@@ -1097,6 +1239,65 @@ export class SimpleSignalDashboard {
     .card-btn:hover {
       border-color: var(--neon-accent);
       color: var(--neon-accent);
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal-box {
+      background: #161b2e;
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      width: 90%;
+      max-width: 460px;
+      padding: 20px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .modal-body {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    .form-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--neon-accent);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .select-box {
+      width: 100%;
+      box-sizing: border-box;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--card-border);
+      color: var(--text-color);
+      padding: 8px 10px;
+      font-size: 12px;
+      border-radius: 6px;
     }
 
     /* ========================================================
@@ -1479,6 +1680,7 @@ export class SimpleSignalDashboard {
       <button class="btn" id="btnAutoFetch">⚡ Auto-Fetch & Fill JSON</button>
       <button class="btn btn-secondary" id="btnRetryConnections" title="Retry all endpoint connections on demand">🔄 Retry Connections</button>
       <button class="btn btn-secondary" id="btnSettings">⚙️ Settings JSON</button>
+      <button class="btn btn-secondary" id="btnAddEndpoint" title="Add a new model endpoint">➕ Add Endpoint</button>
       <button class="btn btn-secondary" id="btnGitHub">
         <svg height="13" width="13" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: -1px; margin-right: 4px;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
         GitHub
@@ -1488,7 +1690,7 @@ export class SimpleSignalDashboard {
         <label style="font-size: 11px; font-weight: 700; color: var(--neon-accent); text-transform: uppercase;">Provider:</label>
         <select class="select-box" id="providerFilterSelect" style="font-weight: 600;">
           <option value="all">⚡ All Providers (${endpoints.length})</option>
-          ${endpoints.map((ep) => `<option value="${ep.name.toLowerCase()}">${ep.name} (${ep.models?.length || 0})</option>`).join('')}
+          ${endpoints.map((ep) => `<option value="${esc(ep.name.toLowerCase())}">${esc(ep.name)} (${ep.models?.length || 0})</option>`).join('')}
         </select>
       </div>
 
@@ -1504,7 +1706,7 @@ export class SimpleSignalDashboard {
           const isLocal = this.isLocalEndpoint(ep.baseUrl, ep.name);
           const models = ep.models || [];
           return `
-        <div class="card" data-name="${ep.name.toLowerCase()}" data-endpoint-name="${ep.name.toLowerCase()}">
+        <div class="card" data-name="${esc(ep.name.toLowerCase())}" data-endpoint-name="${esc(ep.name.toLowerCase())}">
           <div class="card-header">
             <h3 class="card-title">
               <span class="status-dot ${isEnabled ? '' : 'disabled'}"></span>
@@ -1514,11 +1716,11 @@ export class SimpleSignalDashboard {
                 <path d="M 199.43 315.43 A 80 80 0 0 1 312.57 315.43" stroke-width="40" />
                 <circle cx="256" cy="372" r="28" fill="currentColor" stroke="none" />
               </svg>
-              ${ep.name}
+              ${esc(ep.name)}
             </h3>
-            <span class="badge ${ep.protocol === 'lemonade' ? 'badge-neon' : ep.protocol === 'ollama' ? 'badge-cyan' : ''}">${ep.protocol || 'openai'}</span>
+            <span class="badge ${ep.protocol === 'lemonade' ? 'badge-neon' : ep.protocol === 'ollama' ? 'badge-cyan' : ''}">${esc(ep.protocol || 'openai')}</span>
           </div>
-          <div class="card-url">${ep.baseUrl}</div>
+          <div class="card-url">${esc(ep.baseUrl)}</div>
 
           <!-- Compact Endpoint Toolbar with Options... Dropdown -->
           <div class="endpoint-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; margin-bottom: 10px;">
@@ -1549,7 +1751,7 @@ export class SimpleSignalDashboard {
                           SimpleSignalDashboard.loadedModelKeys.has(m.id.toLowerCase());
 
                         return `
-                <div class="model-item ${isSel ? 'is-selected' : ''} ${isLoaded ? 'is-loaded' : ''}" data-model="${m.id.toLowerCase()}" data-model-id="${m.id}" data-endpoint="${ep.name}">
+                <div class="model-item ${isSel ? 'is-selected' : ''} ${isLoaded ? 'is-loaded' : ''}" data-model="${esc(m.id.toLowerCase())}" data-model-id="${esc(m.id)}" data-endpoint="${esc(ep.name)}">
                   <div style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; margin-right: 6px;">
                     <svg class="signal-icon" viewBox="0 0 512 512" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M 86.29 202.29 A 240 240 0 0 1 425.71 202.29" stroke-width="42" />
@@ -1557,14 +1759,19 @@ export class SimpleSignalDashboard {
                       <path d="M 199.43 315.43 A 80 80 0 0 1 312.57 315.43" stroke-width="42" />
                       <circle cx="256" cy="372" r="32" fill="currentColor" stroke="none" />
                     </svg>
-                    <span class="model-name" title="${m.id}">${m.id}</span>
+                    <span class="model-name" title="${esc(m.id)}">${esc(m.id)}</span>
+                    <span style="display: inline-flex; gap: 3px; flex-shrink: 0; align-items: center;">
+                      ${(m.supportsVision === true || detectVisionSupport(m)) ? '<span title="Vision">👁</span>' : ''}
+                      ${m.supportsTools ? '<span title="Tools">🔧</span>' : ''}
+                      ${m.contextLength ? `<span title="Context" style="font-size: 10px; color: var(--muted-text);">${esc(String(m.contextLength))}</span>` : ''}
+                    </span>
                   </div>
                   <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
                     <span class="status-badge-container">
                       ${isSel ? '<span class="badge badge-neon badge-state-sel">✨ ACTIVE</span>' : ''}
                       ${isLoaded ? '<span class="badge badge-green badge-state-load">⚡ LOADED</span>' : ''}
                     </span>
-                    <button class="card-btn btn-dots" data-endpoint="${ep.name}" data-model="${m.id}" data-type="${isLocal ? 'local' : 'api'}" title="Actions">•••</button>
+                    <button class="card-btn btn-dots" data-endpoint="${esc(ep.name)}" data-model="${esc(m.id)}" data-type="${isLocal ? 'local' : 'api'}" title="Actions">•••</button>
                   </div>
                 </div>`;
                       })
@@ -1576,6 +1783,37 @@ export class SimpleSignalDashboard {
         </div>`;
         })
         .join('')}
+    </div>
+
+    <!-- Add Endpoint Modal -->
+    <div id="addEndpointModal" class="modal-overlay" style="display: none;">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3 style="margin: 0; color: var(--neon-accent);">➕ Add New Endpoint</h3>
+          <button class="card-btn" id="btnCloseAddEndpoint" title="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label">Endpoint Name</label>
+          <input type="text" id="addEpName" class="select-box" placeholder="e.g. My Local LM Studio" />
+
+          <label class="form-label">Base URL</label>
+          <input type="text" id="addEpUrl" class="select-box" placeholder="http://127.0.0.1:1234/v1" />
+
+          <label class="form-label">Protocol</label>
+          <select id="addEpProtocol" class="select-box">
+            <option value="openai">OpenAI-compatible</option>
+            <option value="ollama">Ollama</option>
+            <option value="lemonade">Lemonade</option>
+          </select>
+
+          <label class="form-label">API Key (optional)</label>
+          <input type="password" id="addEpKey" class="select-box" placeholder="sk-..." />
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="btnCancelAddEndpoint">Cancel</button>
+          <button class="btn btn-primary-neon" id="btnSaveAddEndpoint">💾 Save Endpoint</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1650,7 +1888,7 @@ export class SimpleSignalDashboard {
           <label>1. Filter by Provider</label>
           <select id="benchProviderSelect" class="select-box" style="width: 100%;">
             <option value="all">⚡ All Providers (${endpoints.length})</option>
-            ${endpoints.map((ep) => `<option value="${ep.name}">${ep.name} (${ep.models?.length || 0} models)</option>`).join('')}
+            ${endpoints.map((ep) => `<option value="${esc(ep.name)}">${esc(ep.name)} (${ep.models?.length || 0} models)</option>`).join('')}
           </select>
         </div>
 
@@ -1661,8 +1899,8 @@ export class SimpleSignalDashboard {
               .filter((ep) => ep.enabled !== false && (ep.models?.length || 0) > 0)
               .map(
                 (ep) => `
-              <optgroup label="${ep.name} (${ep.models?.length || 0} models)" data-provider="${ep.name}">
-                ${(ep.models || []).map((m) => `<option value="${ep.name}|${m.id}">${m.id} [${ep.name}]</option>`).join('')}
+              <optgroup label="${esc(ep.name)} (${ep.models?.length || 0} models)" data-provider="${esc(ep.name)}">
+                ${(ep.models || []).map((m) => `<option value="${esc(ep.name)}|${esc(m.id)}">${esc(m.id)} [${esc(ep.name)}]</option>`).join('')}
               </optgroup>`
               )
               .join('')}
@@ -1684,6 +1922,9 @@ export class SimpleSignalDashboard {
           </button>
           <button class="btn btn-secondary" id="btnBatchBenchmark" title="Run speed test across all models">
             🔥 Test All Models
+          </button>
+          <button class="btn btn-secondary" id="btnCancelBenchmark" title="Cancel running benchmark" style="display: none;">
+            ⏹ Cancel
           </button>
         </div>
       </div>
@@ -1730,19 +1971,22 @@ Waiting to run performance test...
     <div class="table-container" style="margin-top: 20px;">
       <div style="padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--card-border);">
         <h3 style="margin: 0; font-size: 14px; color: var(--neon-accent);">🏆 Model Performance Leaderboard</h3>
-        <button class="card-btn" id="btnClearHistory">Clear Leaderboard</button>
+        <div style="display: flex; gap: 8px;">
+          <button class="card-btn" id="btnExportCsv">📥 Export CSV</button>
+          <button class="card-btn" id="btnClearHistory">Clear Leaderboard</button>
+        </div>
       </div>
-      <table>
+      <table id="leaderboardTable">
         <thead>
           <tr>
-            <th>Rank</th>
-            <th>Model ID</th>
-            <th>Endpoint</th>
-            <th>Speed (TPS)</th>
-            <th>1st Token (TTFT)</th>
-            <th>Tokens</th>
-            <th>Total Latency</th>
-            <th>Status</th>
+            <th data-sort="rank">Rank</th>
+            <th data-sort="modelId">Model ID</th>
+            <th data-sort="endpointName">Endpoint</th>
+            <th data-sort="tokensPerSec">Speed (TPS) ⇅</th>
+            <th data-sort="ttftMs">1st Token (TTFT)</th>
+            <th data-sort="tokensGenerated">Tokens</th>
+            <th data-sort="totalDurationMs">Total Latency</th>
+            <th data-sort="status">Status</th>
           </tr>
         </thead>
         <tbody id="leaderboardBody">
@@ -1821,12 +2065,12 @@ Waiting to run performance test...
     <div id="modelMenuItems"></div>
   </div>
 
-  <div id="endpointActionMenu" class="model-action-menu">
+<<<<<  <div id="endpointActionMenu" class="model-action-menu">
     <div id="epMenuTitle" class="model-menu-title">Endpoint Options</div>
     <div id="epMenuItems"></div>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     (function() {
       let vscode;
       try {
@@ -1845,6 +2089,15 @@ Waiting to run performance test...
         if (vscode) {
           vscode.postMessage(Object.assign({ command: cmd }, data || {}));
         }
+      }
+
+      function escapeHtml(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
       }
 
       function formatTimeAgo(timestamp) {
@@ -1920,14 +2173,101 @@ Waiting to run performance test...
         const btnGitHub = document.getElementById('btnGitHub');
         if (btnGitHub) btnGitHub.addEventListener('click', function() { post('openGitHub'); });
 
+        // Add Endpoint modal
+        const addEndpointModal = document.getElementById('addEndpointModal');
+        const btnAddEndpoint = document.getElementById('btnAddEndpoint');
+        if (btnAddEndpoint) btnAddEndpoint.addEventListener('click', function() {
+          if (addEndpointModal) addEndpointModal.style.display = 'flex';
+        });
+        const closeAddEndpoint = function() {
+          if (addEndpointModal) addEndpointModal.style.display = 'none';
+        };
+        const btnCloseAddEndpoint = document.getElementById('btnCloseAddEndpoint');
+        if (btnCloseAddEndpoint) btnCloseAddEndpoint.addEventListener('click', closeAddEndpoint);
+        const btnCancelAddEndpoint = document.getElementById('btnCancelAddEndpoint');
+        if (btnCancelAddEndpoint) btnCancelAddEndpoint.addEventListener('click', closeAddEndpoint);
+        const btnSaveAddEndpoint = document.getElementById('btnSaveAddEndpoint');
+        if (btnSaveAddEndpoint) btnSaveAddEndpoint.addEventListener('click', function() {
+          const nameEl = document.getElementById('addEpName');
+          const urlEl = document.getElementById('addEpUrl');
+          const protoEl = document.getElementById('addEpProtocol');
+          const keyEl = document.getElementById('addEpKey');
+          post('addEndpoint', {
+            name: nameEl ? nameEl.value : '',
+            baseUrl: urlEl ? urlEl.value : '',
+            protocol: protoEl ? protoEl.value : 'openai',
+            apiKey: keyEl ? keyEl.value : '',
+          });
+          closeAddEndpoint();
+          if (nameEl) nameEl.value = '';
+          if (urlEl) urlEl.value = '';
+          if (keyEl) keyEl.value = '';
+        });
+
         const btnRunBenchmark = document.getElementById('btnRunBenchmark');
         if (btnRunBenchmark) btnRunBenchmark.addEventListener('click', startBenchmark);
 
         const btnBatchBenchmark = document.getElementById('btnBatchBenchmark');
         if (btnBatchBenchmark) btnBatchBenchmark.addEventListener('click', startBatchBenchmark);
 
+        const btnCancelBenchmark = document.getElementById('btnCancelBenchmark');
+        if (btnCancelBenchmark) btnCancelBenchmark.addEventListener('click', function() {
+          post('cancelBenchmark');
+          if (btnCancelBenchmark) btnCancelBenchmark.style.display = 'none';
+        });
+
         const btnClearHistory = document.getElementById('btnClearHistory');
         if (btnClearHistory) btnClearHistory.addEventListener('click', function() { post('clearBenchmarkHistory'); });
+
+        // CSV Export
+        const btnExportCsv = document.getElementById('btnExportCsv');
+        if (btnExportCsv) btnExportCsv.addEventListener('click', function() {
+          const rows = window.__lastLeaderboard || [];
+          if (!rows.length) return;
+          const header = ['rank', 'modelId', 'endpointName', 'tokensPerSec', 'ttftMs', 'tokensGenerated', 'totalDurationMs', 'status'];
+          const csv = [header.join(',')].concat(rows.map(function(h, i) {
+            return [
+              i + 1,
+              '"' + String(h.modelId || '').replace(/"/g, '""') + '"',
+              '"' + String(h.endpointName || '').replace(/"/g, '""') + '"',
+              h.tokensPerSec || 0,
+              h.ttftMs || 0,
+              h.tokensGenerated || 0,
+              h.totalDurationMs || 0,
+              h.status || '',
+            ].join(',');
+          })).join('\\n');
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'simplesignal-benchmarks.csv';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        });
+
+        // Sortable leaderboard headers
+        const leaderboardTable = document.getElementById('leaderboardTable');
+        if (leaderboardTable) {
+          leaderboardTable.querySelectorAll('th[data-sort]').forEach(function(th) {
+            th.style.cursor = 'pointer';
+            th.addEventListener('click', function() {
+              const key = this.getAttribute('data-sort');
+              if (key === 'rank') {
+                window.__leaderboardSort = null;
+                window.__leaderboardSortDir = 'desc';
+              } else if (window.__leaderboardSort === key) {
+                window.__leaderboardSortDir = window.__leaderboardSortDir === 'asc' ? 'desc' : 'asc';
+              } else {
+                window.__leaderboardSort = key;
+                window.__leaderboardSortDir = 'asc';
+              }
+              post('getTelemetry');
+            });
+          });
+        }
 
         const btnClearMessageHistory = document.getElementById('btnClearMessageHistory');
         if (btnClearMessageHistory) btnClearMessageHistory.addEventListener('click', function() { post('clearMessageHistory'); });
@@ -2433,6 +2773,9 @@ Waiting to run performance test...
           statusTag.className = 'badge badge-neon';
         }
 
+        const cancelBtn = document.getElementById('btnCancelBenchmark');
+        if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+
         post('runBenchmark', {
           endpointName: epName,
           modelId: modelId,
@@ -2443,6 +2786,16 @@ Waiting to run performance test...
       function startBatchBenchmark() {
         const outBox = document.getElementById('streamOutput');
         if (outBox) outBox.innerText = 'Starting batch benchmark for all models...';
+
+        const statusTag = document.getElementById('benchStatusTag');
+        if (statusTag) {
+          statusTag.innerText = 'Batch starting... ⚡';
+          statusTag.className = 'badge badge-neon';
+        }
+
+        const cancelBtn = document.getElementById('btnCancelBenchmark');
+        if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+
         post('runAllBenchmarks');
       }
 
@@ -2502,20 +2855,54 @@ Waiting to run performance test...
               outBox.innerText += (msg.chunk || '');
               outBox.scrollTop = outBox.scrollHeight;
             }
+          } else if (msg.type === 'benchmarkBatchStatus') {
+            const statusTag = document.getElementById('benchStatusTag');
+            if (statusTag) {
+              statusTag.innerText = 'Testing ' + escapeHtml(msg.endpoint || '') + ' / ' + escapeHtml(msg.currentModel || '') + '...';
+              statusTag.className = 'badge badge-cyan';
+            }
           } else if (msg.type === 'benchmarkDone') {
             const statusTag = document.getElementById('benchStatusTag');
             if (statusTag) {
               statusTag.innerText = 'Complete 🟢';
               statusTag.className = 'badge badge-green';
             }
+            const cancelBtn = document.getElementById('btnCancelBenchmark');
+            if (cancelBtn) cancelBtn.style.display = 'none';
             renderLeaderboard(msg.history);
           } else if (msg.type === 'benchmarkBatchComplete') {
+            const statusTag = document.getElementById('benchStatusTag');
+            if (statusTag) {
+              statusTag.innerText = msg.cancelled ? 'Cancelled ⚪' : 'Batch Complete 🟢';
+              statusTag.className = msg.cancelled ? 'badge' : 'badge badge-green';
+            }
+            const cancelBtn = document.getElementById('btnCancelBenchmark');
+            if (cancelBtn) cancelBtn.style.display = 'none';
             renderLeaderboard(msg.history);
+          } else if (msg.type === 'benchmarkCancelled') {
+            const statusTag = document.getElementById('benchStatusTag');
+            if (statusTag) {
+              statusTag.innerText = 'Cancelling... ⚪';
+              statusTag.className = 'badge';
+            }
           } else if (msg.type === 'telemetryUpdate') {
             if (msg.selectedModel !== undefined || msg.loadedKeys !== undefined) {
               applyModelStates(msg.selectedModel, msg.loadedKeys);
             }
             renderTelemetry(msg);
+          } else if (msg.type === 'endpointHealth') {
+            Object.keys(msg.results || {}).forEach(function(name) {
+              const isUp = !!msg.results[name];
+              document.querySelectorAll('.card').forEach(function(card) {
+                const cardName = (card.getAttribute('data-endpoint-name') || card.getAttribute('data-name') || '').toLowerCase();
+                if (cardName === name.toLowerCase()) {
+                  const dot = card.querySelector('.status-dot');
+                  if (dot) {
+                    dot.className = 'status-dot ' + (isUp ? '' : 'offline');
+                  }
+                }
+              });
+            });
           }
         } catch (e) {
           console.error('Message handler error:', e);
@@ -2657,12 +3044,12 @@ Waiting to run performance test...
             const totalSec = ((h.totalDurationMs || 0) / 1000).toFixed(2);
             const timeStr = formatTimeAgo(h.timestamp || h.startTime);
             const srcBadge = h.source === 'benchmark' ? '<span class="badge badge-neon">Benchmark</span>' : '<span class="badge badge-cyan">VS Code Chat</span>';
-            const statusTxt = h.status === 'completed' ? '🟢 OK' : h.status === 'streaming' ? '⚡ Streaming' : '🔴 ' + (h.errorMessage || 'Error');
+            const statusTxt = h.status === 'completed' ? '🟢 OK' : h.status === 'streaming' ? '⚡ Streaming' : '🔴 ' + escapeHtml(h.errorMessage || 'Error');
 
             return '<tr>' +
               '<td style="color: var(--muted-text); white-space: nowrap;">' + timeStr + '</td>' +
-              '<td><strong>' + (h.modelId || '') + '</strong><div class="speed-bar-container"><div class="speed-bar" style="width: ' + barW + '%;"></div></div></td>' +
-              '<td><span class="badge">' + (h.endpointName || '') + '</span></td>' +
+              '<td><strong>' + escapeHtml(h.modelId || '') + '</strong><div class="speed-bar-container"><div class="speed-bar" style="width: ' + barW + '%;"></div></div></td>' +
+              '<td><span class="badge">' + escapeHtml(h.endpointName || '') + '</span></td>' +
               '<td>' + srcBadge + '</td>' +
               '<td style="color: var(--neon-accent); font-weight: 700; font-size: 13px;">' + tps + ' tok/s</td>' +
               '<td>' + (h.ttftMs || 0) + ' ms</td>' +
@@ -2682,13 +3069,23 @@ Waiting to run performance test...
           if (!tbody) return;
 
           if (!history || history.length === 0) {
+            window.__lastLeaderboard = [];
             tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--muted-text);">No benchmark history available.</td></tr>';
             return;
           }
 
+          const sortKey = window.__leaderboardSort || 'tokensPerSec';
+          const sortDir = window.__leaderboardSortDir === 'asc' ? 1 : -1;
           const sorted = history.slice().sort(function(a, b) {
-            return (b.tokensPerSec || 0) - (a.tokensPerSec || 0);
+            const av = a[sortKey];
+            const bv = b[sortKey];
+            if (typeof av === 'number' && typeof bv === 'number') {
+              return (av - bv) * sortDir;
+            }
+            return String(av || '').localeCompare(String(bv || '')) * sortDir;
           });
+          window.__lastLeaderboard = sorted;
+
           const maxTPS = Math.max.apply(Math, sorted.map(function(s) { return s.tokensPerSec || 1; }));
 
           tbody.innerHTML = sorted.map(function(h, i) {
@@ -2696,11 +3093,11 @@ Waiting to run performance test...
             const barW = Math.min(100, Math.round((tps / maxTPS) * 100));
             const rank = i + 1;
             const totalSec = ((h.totalDurationMs || 0) / 1000).toFixed(2);
-            const statusTxt = h.status === 'success' ? '🟢 OK' : '🔴 ' + (h.errorMessage || 'Error');
+            const statusTxt = h.status === 'success' ? '🟢 OK' : '🔴 ' + escapeHtml(h.errorMessage || 'Error');
             return '<tr>' +
               '<td><strong>#' + rank + '</strong></td>' +
-              '<td><strong>' + (h.modelId || '') + '</strong><div class="speed-bar-container"><div class="speed-bar" style="width: ' + barW + '%;"></div></div></td>' +
-              '<td><span class="badge">' + (h.endpointName || '') + '</span></td>' +
+              '<td><strong>' + escapeHtml(h.modelId || '') + '</strong><div class="speed-bar-container"><div class="speed-bar" style="width: ' + barW + '%;"></div></div></td>' +
+              '<td><span class="badge">' + escapeHtml(h.endpointName || '') + '</span></td>' +
               '<td style="color: var(--neon-accent); font-weight: 700; font-size: 14px;">' + tps + ' tok/s</td>' +
               '<td>' + (h.ttftMs || 0) + ' ms</td>' +
               '<td>' + (h.tokensGenerated || 0) + '</td>' +
@@ -2748,7 +3145,7 @@ Waiting to run performance test...
               if (data.ram.aiProcesses && data.ram.aiProcesses.length > 0) {
                 aiList.innerHTML = data.ram.aiProcesses.map(function(p) {
                   return '<div class="proc-item ai-model">' +
-                    '<span>🤖 <strong>' + (p.modelDetails || p.name) + '</strong> (PID ' + p.pid + ')</span>' +
+                    '<span>🤖 <strong>' + escapeHtml(p.modelDetails || p.name || '') + '</strong> (PID ' + p.pid + ')</span>' +
                     '<span class="badge">' + (p.ramMB || 0) + ' MB RAM</span>' +
                   '</div>';
                 }).join('');
@@ -2761,22 +3158,23 @@ Waiting to run performance test...
           if (data.vram) {
             const gpuName = data.vram.gpuName || 'Graphics Adapter';
             const vramMB = typeof data.vram.usedVRAM_MB === 'number' ? data.vram.usedVRAM_MB : 0;
+            const totalVRAM = (typeof data.vram.totalVRAM_MB === 'number' && data.vram.totalVRAM_MB > 0) ? data.vram.totalVRAM_MB : 12000;
 
             const gpuNameEl = document.getElementById('gpuNameDisplay');
             if (gpuNameEl) gpuNameEl.innerText = '🎮 ' + gpuName;
 
             const gpuUsageEl = document.getElementById('gpuUsageDisplay');
-            if (gpuUsageEl) gpuUsageEl.innerText = vramMB.toLocaleString() + ' MB Used';
+            if (gpuUsageEl) gpuUsageEl.innerText = vramMB.toLocaleString() + ' / ' + totalVRAM.toLocaleString() + ' MB Used';
 
             const vramBar = document.getElementById('vramBarFill');
-            if (vramBar) vramBar.style.width = Math.min(100, Math.round((vramMB / 12000) * 100)) + '%';
+            if (vramBar) vramBar.style.width = Math.min(100, Math.round((vramMB / totalVRAM) * 100)) + '%';
 
             const gpuList = document.getElementById('gpuProcessList');
             if (gpuList) {
               if (data.vram.processes && data.vram.processes.length > 0) {
                 gpuList.innerHTML = data.vram.processes.slice(0, 8).map(function(p) {
                   return '<div class="proc-item ' + (p.isAIModel ? 'ai-model' : '') + '">' +
-                    '<span>' + (p.isAIModel ? '🤖' : '🖥️') + ' <strong>' + p.name + '</strong> (PID ' + p.pid + ')</span>' +
+                    '<span>' + (p.isAIModel ? '🤖' : '🖥️') + ' <strong>' + escapeHtml(p.name || '') + '</strong> (PID ' + p.pid + ')</span>' +
                     '<span class="badge">' + (p.vramMB || 0) + ' MB</span>' +
                   '</div>';
                 }).join('');
@@ -2793,14 +3191,17 @@ Waiting to run performance test...
                 tbody.innerHTML = data.loadedModels.map(function(m) {
                   const vramStr = m.vramMB ? m.vramMB + ' MB' : '-';
                   const ramStr = m.ramMB ? (m.ramMB / 1024).toFixed(1) + ' GB' : '-';
+                  const safeName = escapeHtml(m.name || '');
+                  const safeDetails = escapeHtml(m.details || '');
+                  const safeSource = escapeHtml((m.source || '').toUpperCase());
                   return '<tr>' +
-                    '<td><strong>' + (m.name || '') + '</strong><br><small style="color: var(--muted-text);">' + (m.details || '') + '</small></td>' +
-                    '<td><span class="badge">' + (m.source || '').toUpperCase() + '</span></td>' +
+                    '<td><strong>' + safeName + '</strong><br><small style="color: var(--muted-text);">' + safeDetails + '</small></td>' +
+                    '<td><span class="badge">' + safeSource + '</span></td>' +
                     '<td>' + (m.pid || 'N/A') + '</td>' +
                     '<td>' + vramStr + '</td>' +
                     '<td>' + ramStr + '</td>' +
                     '<td>' +
-                      '<button class="card-btn btn-unload" style="border-color: #ff5722; color: #ff5722;" data-source="' + (m.source || '') + '" data-name="' + (m.name || '') + '" data-pid="' + (m.pid || 0) + '">' +
+                      '<button class="card-btn btn-unload" style="border-color: #ff5722; color: #ff5722;" data-source="' + safeSource + '" data-name="' + safeName + '" data-pid="' + (m.pid || 0) + '">' +
                         '🗑️ Unload' +
                       '</button>' +
                     '</td>' +
@@ -2839,7 +3240,17 @@ Waiting to run performance test...
       // Auto-fetch telemetry after UI renders
       setTimeout(function() {
         post('getTelemetry');
+        post('pingEndpoints');
       }, 50);
+
+      // Periodic refresh: telemetry every 5s, endpoint health every 30s
+      setInterval(function() {
+        post('getTelemetry');
+      }, 5000);
+
+      setInterval(function() {
+        post('pingEndpoints');
+      }, 30000);
     })();
   </script>
 </body>

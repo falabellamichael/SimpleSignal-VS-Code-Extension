@@ -36,11 +36,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ModelFetcher = void 0;
 const vscode = __importStar(require("vscode"));
 const utils_1 = require("./utils");
+const vision_1 = require("./vision");
 const LOCAL_PROBE_TARGETS = [
     {
         name: 'SimpleRAG Local Server',
         baseUrl: 'http://127.0.0.1:11211/v1',
-        apiKey: 'Maitland1,',
+        apiKey: '',
         protocol: 'openai',
         checkUrl: 'http://127.0.0.1:11211/v1/models',
     },
@@ -147,9 +148,21 @@ class ModelFetcher {
                 if (models.length > 0) {
                     endpoint.models = models;
                     totalFetchedModels += models.length;
-                    outputChannel?.appendLine(`[SimpleSignal] -> Found ${models.length} model(s) for ${endpoint.name}`);
+                    const visionCount = models.filter((m) => m.supportsVision).length;
+                    outputChannel?.appendLine(`[SimpleSignal] -> Found ${models.length} model(s) for ${endpoint.name} (${visionCount} vision-capable)`);
                 }
                 else {
+                    // Server returned nothing — re-run the shared detector over the
+                    // preserved list so flags written by older detector versions heal
+                    // (a stale `false` would otherwise hide the vision icon forever).
+                    for (const m of endpoint.models || []) {
+                        if ((0, vision_1.detectVisionSupport)(m)) {
+                            m.supportsVision = true;
+                        }
+                        else if (m.supportsVision === undefined) {
+                            m.supportsVision = false;
+                        }
+                    }
                     outputChannel?.appendLine(`[SimpleSignal] -> No models returned for ${endpoint.name} (preserving existing).`);
                 }
             }
@@ -213,7 +226,7 @@ class ModelFetcher {
                         name: `${id} [${endpoint.name}]`,
                         contextLength: 131072,
                         maxOutputTokens: 8192,
-                        supportsVision: id.toLowerCase().includes('vision') || id.toLowerCase().includes('vl') || id.toLowerCase().includes('llava'),
+                        supportsVision: (0, vision_1.detectVisionSupport)({ ...(typeof m === 'object' ? m : {}), id }),
                         supportsTools: true,
                         enabled: true,
                         endpointName: endpoint.name,
@@ -286,12 +299,7 @@ class ModelFetcher {
             return rawList.map((m) => {
                 const id = typeof m === 'string' ? m : m.id || m.name || m.checkpoint;
                 const labels = m.labels || [];
-                const isVision = labels.includes('vision') ||
-                    id.toLowerCase().includes('vision') ||
-                    id.toLowerCase().includes('vl') ||
-                    id.toLowerCase().includes('4o') ||
-                    id.toLowerCase().includes('coyote') ||
-                    id.toLowerCase().includes('snowfox');
+                const isVision = (0, vision_1.detectVisionSupport)(m);
                 const isTools = !labels.includes('no-tools');
                 const contextLen = m.max_context_window ||
                     m.context_length ||

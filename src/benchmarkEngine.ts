@@ -1,5 +1,6 @@
 import * as http from 'http';
 import * as https from 'https';
+import * as vscode from 'vscode';
 import { EndpointConfig, BenchmarkPreset, BenchmarkResult } from './types';
 import { ModelTelemetryTracker } from './telemetryTracker';
 import { resolveEndpointApiKey } from './utils';
@@ -30,6 +31,16 @@ export class BenchmarkEngine {
   ];
 
   private static history: BenchmarkResult[] = [];
+  private static storage: vscode.Memento | null = null;
+  private static cancelRequested = false;
+
+  public static setStorage(storage: vscode.Memento): void {
+    this.storage = storage;
+    const saved = storage.get<BenchmarkResult[]>('simplesignal.benchmarkHistory', []);
+    if (Array.isArray(saved)) {
+      this.history = saved;
+    }
+  }
 
   public static getHistory(): BenchmarkResult[] {
     return [...this.history];
@@ -40,10 +51,30 @@ export class BenchmarkEngine {
     if (this.history.length > 50) {
       this.history.pop();
     }
+    this.persist();
   }
 
   public static clearHistory(): void {
     this.history = [];
+    this.persist();
+  }
+
+  public static requestCancel(): void {
+    this.cancelRequested = true;
+  }
+
+  public static isCancelRequested(): boolean {
+    return this.cancelRequested;
+  }
+
+  public static resetCancel(): void {
+    this.cancelRequested = false;
+  }
+
+  private static persist(): void {
+    try {
+      this.storage?.update('simplesignal.benchmarkHistory', this.history);
+    } catch {}
   }
 
   /**
@@ -62,6 +93,7 @@ export class BenchmarkEngine {
     const maxTokens = customMaxTokens || preset.maxTokens;
 
     const protocol = endpoint.protocol || 'openai';
+    this.resetCancel();
 
     const telemetrySession = ModelTelemetryTracker.startMessage({
       modelId,
@@ -197,6 +229,10 @@ export class BenchmarkEngine {
           let buffer = '';
 
           res.on('data', (chunk: Buffer) => {
+            if (BenchmarkEngine.isCancelRequested()) {
+              req.destroy();
+              return;
+            }
             buffer += chunk.toString('utf-8');
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
@@ -388,6 +424,10 @@ export class BenchmarkEngine {
           let buffer = '';
 
           res.on('data', (chunk: Buffer) => {
+            if (BenchmarkEngine.isCancelRequested()) {
+              req.destroy();
+              return;
+            }
             buffer += chunk.toString('utf-8');
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';

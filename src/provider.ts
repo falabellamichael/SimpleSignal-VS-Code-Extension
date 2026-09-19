@@ -41,7 +41,7 @@ export class SimpleSignalChatProvider implements vscode.LanguageModelChatProvide
       maxInputTokens: 131072,
       maxOutputTokens: 8192,
       capabilities: {
-        vision: true,
+        imageInput: true,
         toolCalling: true,
       },
     } as any);
@@ -69,7 +69,7 @@ export class SimpleSignalChatProvider implements vscode.LanguageModelChatProvide
           maxInputTokens: m.contextLength || 131072,
           maxOutputTokens: m.maxOutputTokens || 8192,
           capabilities: {
-            vision: m.supportsVision ?? false,
+            imageInput: m.supportsVision ?? false,
             toolCalling: m.supportsTools ?? true,
           },
         } as any;

@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TreeItemNode = exports.SimpleSignalTreeDataProvider = void 0;
 const vscode = __importStar(require("vscode"));
+const vision_1 = require("./vision");
 class SimpleSignalTreeDataProvider {
     extensionUri;
     _onDidChangeTreeData = new vscode.EventEmitter();
@@ -260,7 +261,11 @@ class SimpleSignalTreeDataProvider {
     }
     createModelNode(model, endpointName) {
         const badges = [];
-        if (model.supportsVision)
+        // Detector wins over a stale stored `false`: flags persisted by older
+        // detector versions (or servers that omitted vision metadata) would
+        // otherwise hide the icon on models that genuinely accept images.
+        const hasVision = model.supportsVision === true || (0, vision_1.detectVisionSupport)(model);
+        if (hasVision)
             badges.push('👁️');
         if (model.supportsTools)
             badges.push('🛠️');
@@ -287,7 +292,7 @@ class SimpleSignalTreeDataProvider {
         }
         const node = new TreeItemNode(model.id, vscode.TreeItemCollapsibleState.None, contextVal, icon);
         node.description = `${badges.join(' ')} [${endpointName}]`;
-        node.tooltip = `Model: ${model.id}\nEndpoint: ${endpointName}\nStatus: ${isSelected ? 'Selected Active Model' : isLoaded ? 'Loaded in Memory' : 'Available'}\nType: ${isLocal ? 'Local Server' : 'Cloud API'}\nContext Window: ${model.contextLength || 131072} tokens\nVision: ${model.supportsVision ? 'Yes' : 'No'}\nTools: ${model.supportsTools ? 'Yes' : 'No'}`;
+        node.tooltip = `Model: ${model.id}\nEndpoint: ${endpointName}\nStatus: ${isSelected ? 'Selected Active Model' : isLoaded ? 'Loaded in Memory' : 'Available'}\nType: ${isLocal ? 'Local Server' : 'Cloud API'}\nContext Window: ${model.contextLength || 131072} tokens\nVision: ${hasVision ? 'Yes' : 'No'}\nTools: ${model.supportsTools ? 'Yes' : 'No'}`;
         node.model = model;
         node.endpointName = endpointName;
         return node;

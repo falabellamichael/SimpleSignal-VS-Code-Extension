@@ -12,9 +12,29 @@ export class ModelTelemetryTracker {
   private static lastStats: LiveModelStats | null = null;
   private static history: LiveModelStats[] = [];
   private static firstTokenTimeMap: Map<string, number> = new Map();
+  private static storage: vscode.Memento | null = null;
   private static _onTelemetryEvent = new vscode.EventEmitter<TelemetryEvent>();
 
   public static readonly onTelemetryEvent = this._onTelemetryEvent.event;
+
+  public static setStorage(storage: vscode.Memento): void {
+    this.storage = storage;
+    const saved = storage.get<LiveModelStats[]>('simplesignal.messageHistory', []);
+    if (Array.isArray(saved)) {
+      this.history = saved;
+    }
+    const savedLast = storage.get<LiveModelStats | null>('simplesignal.lastMessage', null);
+    if (savedLast) {
+      this.lastStats = savedLast;
+    }
+  }
+
+  private static persist(): void {
+    try {
+      this.storage?.update('simplesignal.messageHistory', this.history);
+      this.storage?.update('simplesignal.lastMessage', this.lastStats);
+    } catch {}
+  }
 
   public static startMessage(params: {
     modelId: string;
@@ -145,6 +165,7 @@ export class ModelTelemetryTracker {
       this.history.pop();
     }
 
+    this.persist();
     this._onTelemetryEvent.fire({ type: 'complete', stats: this.lastStats });
     return this.lastStats;
   }
@@ -168,6 +189,7 @@ export class ModelTelemetryTracker {
       this.history.pop();
     }
 
+    this.persist();
     this._onTelemetryEvent.fire({ type: 'error', stats: this.lastStats });
   }
 
@@ -187,5 +209,6 @@ export class ModelTelemetryTracker {
     this.history = [];
     this.lastStats = null;
     this.activeStats = null;
+    this.persist();
   }
 }

@@ -13,6 +13,10 @@ export function activate(context: vscode.ExtensionContext) {
   const outputChannel = vscode.window.createOutputChannel('SimpleSignal');
   outputChannel.appendLine('[SimpleSignal] SimpleSignal Universal Model Provider activating...');
 
+  // Restore persisted benchmark & message histories
+  BenchmarkEngine.setStorage(context.globalState);
+  ModelTelemetryTracker.setStorage(context.globalState);
+
   const provider = new SimpleSignalChatProvider(context, outputChannel);
 
   // Register provider under vendor "simplesignal"
@@ -101,7 +105,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Dashboard command
   const dashboardCmd = vscode.commands.registerCommand('simplesignal.openDashboard', () => {
-    SimpleSignalDashboard.createOrShow(context.extensionUri);
+    SimpleSignalDashboard.createOrShow(context);
   });
   context.subscriptions.push(dashboardCmd);
 

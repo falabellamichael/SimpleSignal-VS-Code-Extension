@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { EndpointConfig, ModelConfig } from './types';
 import { getApiKeyCandidates, resolveEndpointApiKey, normalizeBaseUrl } from './utils';
+import { detectVisionSupport } from './vision';
 
 interface ProbeTarget {
   name: string;
@@ -14,7 +15,7 @@ const LOCAL_PROBE_TARGETS: ProbeTarget[] = [
   {
     name: 'SimpleRAG Local Server',
     baseUrl: 'http://127.0.0.1:11211/v1',
-    apiKey: 'Maitland1,',
+    apiKey: '',
     protocol: 'openai',
     checkUrl: 'http://127.0.0.1:11211/v1/models',
   },
@@ -137,8 +138,19 @@ export class ModelFetcher {
         if (models.length > 0) {
           endpoint.models = models;
           totalFetchedModels += models.length;
-          outputChannel?.appendLine(`[SimpleSignal] -> Found ${models.length} model(s) for ${endpoint.name}`);
+          const visionCount = models.filter((m) => m.supportsVision).length;
+          outputChannel?.appendLine(`[SimpleSignal] -> Found ${models.length} model(s) for ${endpoint.name} (${visionCount} vision-capable)`);
         } else {
+          // Server returned nothing — re-run the shared detector over the
+          // preserved list so flags written by older detector versions heal
+          // (a stale `false` would otherwise hide the vision icon forever).
+          for (const m of endpoint.models || []) {
+            if (detectVisionSupport(m)) {
+              m.supportsVision = true;
+            } else if (m.supportsVision === undefined) {
+              m.supportsVision = false;
+            }
+          }
           outputChannel?.appendLine(`[SimpleSignal] -> No models returned for ${endpoint.name} (preserving existing).`);
         }
       } catch (err: any) {
@@ -157,7 +169,7 @@ export class ModelFetcher {
     };
   }
 
-  private static async checkUrlReachable(url: string, apiKey?: string): Promise<boolean> {
+  public static async checkUrlReachable(url: string, apiKey?: string): Promise<boolean> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2000);
     try {
@@ -205,7 +217,7 @@ export class ModelFetcher {
             name: `${id} [${endpoint.name}]`,
             contextLength: 131072,
             maxOutputTokens: 8192,
-            supportsVision: id.toLowerCase().includes('vision') || id.toLowerCase().includes('vl') || id.toLowerCase().includes('llava'),
+            supportsVision: detectVisionSupport({ ...(typeof m === 'object' ? m : {}), id }),
             supportsTools: true,
             enabled: true,
             endpointName: endpoint.name,
@@ -289,13 +301,7 @@ export class ModelFetcher {
       return rawList.map((m) => {
         const id = typeof m === 'string' ? m : m.id || m.name || m.checkpoint;
         const labels: string[] = m.labels || [];
-        const isVision =
-          labels.includes('vision') ||
-          id.toLowerCase().includes('vision') ||
-          id.toLowerCase().includes('vl') ||
-          id.toLowerCase().includes('4o') ||
-          id.toLowerCase().includes('coyote') ||
-          id.toLowerCase().includes('snowfox');
+        const isVision = detectVisionSupport(m);
         const isTools = !labels.includes('no-tools');
         const contextLen =
           m.max_context_window ||

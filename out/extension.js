@@ -47,6 +47,9 @@ const telemetryTracker_1 = require("./telemetryTracker");
 function activate(context) {
     const outputChannel = vscode.window.createOutputChannel('SimpleSignal');
     outputChannel.appendLine('[SimpleSignal] SimpleSignal Universal Model Provider activating...');
+    // Restore persisted benchmark & message histories
+    benchmarkEngine_1.BenchmarkEngine.setStorage(context.globalState);
+    telemetryTracker_1.ModelTelemetryTracker.setStorage(context.globalState);
     const provider = new provider_1.SimpleSignalChatProvider(context, outputChannel);
     // Register provider under vendor "simplesignal"
     const registration = vscode.lm.registerLanguageModelChatProvider('simplesignal', provider);
@@ -116,7 +119,7 @@ function activate(context) {
     context.subscriptions.push(autoFetchCmd);
     // Dashboard command
     const dashboardCmd = vscode.commands.registerCommand('simplesignal.openDashboard', () => {
-        dashboard_1.SimpleSignalDashboard.createOrShow(context.extensionUri);
+        dashboard_1.SimpleSignalDashboard.createOrShow(context);
     });
     context.subscriptions.push(dashboardCmd);
     // ==================== VRAM DIAGNOSTICS COMMAND ====================
