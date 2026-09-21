@@ -97,24 +97,7 @@ class SimpleSignalTreeDataProvider {
                 return node;
             });
         }
-        if (element.contextValue === 'endpoint_item') {
-            const ep = element.endpoint;
-            const items = [];
-            // 1. Options Subgroup
-            const optionsGroup = new TreeItemNode('Options...', vscode.TreeItemCollapsibleState.Collapsed, 'endpoint_options_subgroup', new vscode.ThemeIcon('gear', new vscode.ThemeColor('charts.orange')));
-            optionsGroup.description = 'API key, URL, sync, ping & settings';
-            optionsGroup.tooltip = `Manage endpoint options for "${ep.name}"`;
-            optionsGroup.endpoint = ep;
-            items.push(optionsGroup);
-            // 2. Models Subgroup
-            const models = ep.models || [];
-            const modelsGroup = new TreeItemNode(`Models (${models.length})`, models.length > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None, 'endpoint_models_subgroup', new vscode.ThemeIcon('library', new vscode.ThemeColor('charts.blue')));
-            modelsGroup.description = models.length > 0 ? `${models.length} model(s)` : 'No models (Click Auto-Fetch)';
-            modelsGroup.endpoint = ep;
-            items.push(modelsGroup);
-            return items;
-        }
-        if (element.contextValue === 'endpoint_options_subgroup') {
+        if (element.contextValue === 'endpoint_item' || element.contextValue === 'endpoint_options_subgroup') {
             const ep = element.endpoint;
             const items = [];
             // 1. API Key Management
@@ -167,6 +150,14 @@ class SimpleSignalTreeDataProvider {
             const deleteNode = new TreeItemNode('Delete Endpoint', vscode.TreeItemCollapsibleState.None, 'endpoint_action', new vscode.ThemeIcon('trash', new vscode.ThemeColor('charts.red')));
             deleteNode.command = { command: 'simplesignal.endpoint.delete', title: 'Delete Endpoint', arguments: [ep] };
             items.push(deleteNode);
+            // 11. Models Subgroup
+            if (element.contextValue === 'endpoint_item') {
+                const models = ep.models || [];
+                const modelsGroup = new TreeItemNode(`Models (${models.length})`, models.length > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None, 'endpoint_models_subgroup', new vscode.ThemeIcon('library', new vscode.ThemeColor('charts.blue')));
+                modelsGroup.description = models.length > 0 ? `${models.length} model(s)` : 'No models (Click Auto-Fetch)';
+                modelsGroup.endpoint = ep;
+                items.push(modelsGroup);
+            }
             return items;
         }
         if (element.contextValue === 'endpoint_models_subgroup') {

@@ -1722,10 +1722,18 @@ export class SimpleSignalDashboard {
           </div>
           <div class="card-url">${esc(ep.baseUrl)}</div>
 
-          <!-- Compact Endpoint Toolbar with Options... Dropdown -->
-          <div class="endpoint-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; margin-bottom: 10px;">
-            <button class="card-btn btn-ep-action" data-ep-action="fetch" data-endpoint="${ep.name}" title="Sync and auto-fetch models">⚡ Sync</button>
-            <button class="card-btn btn-ep-options" data-endpoint="${ep.name}" data-apikey="${ep.apiKey || ''}" data-url="${ep.baseUrl}" data-enabled="${isEnabled}" data-proto="${ep.protocol || 'openai'}" title="Manage endpoint options">⚙️ Options ▾</button>
+          <!-- Endpoint Management Action Toolbar -->
+          <div class="endpoint-toolbar" style="display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; margin-bottom: 10px;">
+            <button class="card-btn btn-ep-action" data-ep-action="apiKey" data-endpoint="${esc(ep.name)}" title="Set or update API key">${ep.apiKey ? '🔑 Key: ••••' + (ep.apiKey.length > 4 ? ep.apiKey.slice(-4) : '') : '🔑 Set Key'}</button>
+            <button class="card-btn btn-ep-action" data-ep-action="url" data-endpoint="${esc(ep.name)}" title="Edit base URL">🌐 URL</button>
+            <button class="card-btn btn-ep-action" data-ep-action="fetch" data-endpoint="${esc(ep.name)}" title="Auto-fetch and sync models">⚡ Sync</button>
+            <button class="card-btn btn-ep-action" data-ep-action="addModel" data-endpoint="${esc(ep.name)}" title="Add custom model ID">➕ Model</button>
+            <button class="card-btn btn-ep-action" data-ep-action="test" data-endpoint="${esc(ep.name)}" title="Test ping & latency">🔄 Ping</button>
+            <button class="card-btn btn-ep-action" data-ep-action="bench" data-endpoint="${esc(ep.name)}" title="Benchmark this endpoint">🚀 Bench</button>
+            <button class="card-btn btn-ep-action" data-ep-action="proto" data-endpoint="${esc(ep.name)}" title="Configure protocol">⚙️ Config</button>
+            <button class="card-btn btn-ep-action" data-ep-action="toggle" data-endpoint="${esc(ep.name)}" title="Toggle active / disabled">${isEnabled ? '🔌 Active' : '⚪ Disabled'}</button>
+            <button class="card-btn btn-ep-options" data-endpoint="${esc(ep.name)}" data-apikey="${esc(ep.apiKey || '')}" data-url="${esc(ep.baseUrl)}" data-enabled="${isEnabled}" data-proto="${esc(ep.protocol || 'openai')}" title="Manage endpoint options">⚙️ Options ▾</button>
+            <button class="card-btn btn-ep-action btn-danger" data-ep-action="delete" data-endpoint="${esc(ep.name)}" title="Delete endpoint">🗑️</button>
           </div>
           
           <div class="accordion-toggle" title="Click to expand/collapse models dropdown">
@@ -2065,7 +2073,7 @@ Waiting to run performance test...
     <div id="modelMenuItems"></div>
   </div>
 
-<<<<<  <div id="endpointActionMenu" class="model-action-menu">
+  <div id="endpointActionMenu" class="model-action-menu">
     <div id="epMenuTitle" class="model-menu-title">Endpoint Options</div>
     <div id="epMenuItems"></div>
   </div>
